@@ -1,0 +1,8 @@
+{
+  "name": "repo-clean",
+  "version": "0.1.0",
+  "description": "Keeps a repo's docs as a one-question-one-authoritative-file system: init a routing table + decision register + append-only log, maintain it during work, reorganize a messy existing repo into it, or audit one against a stdlib checker.",
+  "author": {
+    "name": "ry"
+  }
+}
