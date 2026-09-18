@@ -8,7 +8,7 @@ pre-commit hook.
 ## Install
 
 ```
-/plugin marketplace add /path/to/repo-clean
+/plugin marketplace add mazeffa/repo-cleaner
 /plugin install repo-clean@repo-clean
 ```
 
