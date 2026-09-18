@@ -559,7 +559,7 @@ def main(argv):
         root = _resolve_root(argv)
         if root is None:
             return 2
-        target = root / "check_docs_local.py"
+        target = Path(__file__).resolve().parent / "check_docs_local.py"
         if target.exists():
             print(f"{target}: already exists, refusing to overwrite")
             return 2

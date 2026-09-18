@@ -9,7 +9,7 @@ pre-commit hook.
 
 ```
 /plugin marketplace add C:\claude\repo-clean
-/plugin install repo-clean
+/plugin install repo-clean@repo-clean
 ```
 
 ## Use
