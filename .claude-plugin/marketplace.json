@@ -1,9 +1,9 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "repo-clean",
-  "description": "Local marketplace for the repo-clean plugin: docs hygiene (routing table, decision register, append-only log, stdlib checker + pre-commit gate).",
+  "description": "Marketplace for the repo-clean plugin: docs hygiene (routing table, decision register, append-only log, stdlib checker + pre-commit gate).",
   "owner": {
-    "name": "ry"
+    "name": "repo-clean"
   },
   "plugins": [
     {

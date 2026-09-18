@@ -8,7 +8,7 @@ pre-commit hook.
 ## Install
 
 ```
-/plugin marketplace add C:\claude\repo-clean
+/plugin marketplace add /path/to/repo-clean
 /plugin install repo-clean@repo-clean
 ```
 

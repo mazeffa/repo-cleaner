@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Generic docs hygiene checker. Stdlib only. Ported from a repo-specific checker
-(draftkings nfl model/scripts/tools/check_docs.py) into a config-driven core plus an
+"""Generic docs hygiene checker. Stdlib only. A config-driven core plus an
 optional check_docs_local.py extension point for repo-specific rules.
 
 Exit 0 and silent on success. Exit 1 on doc findings, exit 2 on an internal error
