@@ -11,7 +11,7 @@ are fine; there's no need for a clean tree here.
 ## 1. Collect changed facts
 
 - `git diff` (working tree + staged) for what changed.
-- `git log` since the date of the log's last entry, capped at N days (use whichever is more
+- `git log` since the date of the log's last entry, capped at 30 days (use whichever is more
   recent/smaller). If the gap is large, that's not a maintain-sized job — say "run
   `/repo-clean reorganize`" instead and stop.
 

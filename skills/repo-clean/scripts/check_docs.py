@@ -42,7 +42,7 @@ CONFIG_VERSION = 1
 CONFIG = {
     "living_roots": ["CLAUDE.md", "README.md"],
     "docs_dir": "docs",
-    "exempt_dirs": ["docs/archive", "docs/log", "docs/council", ".council"],
+    "exempt_dirs": ["docs/archive", "docs/log"],
     "decisions_file": "docs/DECISIONS.md",
     "id_prefix": "D-",
     "status_vocab": ("active", "superseded", "open"),
@@ -54,17 +54,22 @@ CONFIG = {
     "file_map": "docs/FILE_MAP.md",
     "file_map_cap": 60,
     "banned_header_re": r"^#+.*\b(TODO|Next Steps|Future Work)\b",
-    "outside_path_re": r"[A-Za-z]:\\|~[\\/]\.claude",
-    "path_suppressed_prefixes": ("output/", "data/ops/"),
-    "path_cmd_prefixes": ("Rscript ", "uv run python -m ops", "python ", "python3 "),
+    "outside_path_re": r"[A-Za-z]:\\|~[\\/]|(?:^|[\s`(\[])/(?:home|Users|root)/",
+    "path_suppressed_prefixes": ("output/",),
+    "path_cmd_prefixes": ("python ", "python3 "),
 }
+
+def read_doc(p):
+    """Never raise on a stray non-UTF-8 byte; a mojibake char just fails some other rule."""
+    return p.read_text(encoding="utf-8", errors="replace")
+
 
 NO_ROUTE_MARKER = "<!-- no-route -->"  # deprecated; routing-coverage only, still honored
 SUPPRESS_RE = re.compile(r"<!--\s*check-docs:\s*ignore\s+([\w-]+)\s*-->")
 PLACEHOLDER = ("<", "*", "..", "path/to", "YYYY", "{", "|")
 PATH_LIKE = re.compile(r"^[\w][\w.\- ]*(/[\w][\w.\- ]*)+$")
 BANNER_WORDS = ("Superseded", "Archived", "Disposition")
-FIELD_RE_TMPL = r"{}:\s*(.*?)(?=\s{{2,}}\S+:|$)"
+FIELD_RE_TMPL = r"{}:\s*(.*?)(?=\s+\S+:|$)"
 
 
 def line_ignored(line, rule_id):
@@ -173,7 +178,7 @@ def check_decisions_integrity(ctx, errors):
         return set()
     prefix = re.escape(cfg["id_prefix"])
     id_re = re.compile(prefix + r"\d+")
-    text = p.read_text(encoding="utf-8")
+    text = read_doc(p)
     entries = re.split(rf"(?=^## {prefix}\d+)", text, flags=re.M)[1:]
     status_re = re.compile(FIELD_RE_TMPL.format("Status"), re.M)
     verdict_re = re.compile(FIELD_RE_TMPL.format("Verdict"), re.M)
@@ -221,7 +226,7 @@ def check_log_fields_resolve(ctx, errors, decision_ids):
     prefix = re.escape(cfg["id_prefix"])
     id_re = re.compile(prefix + r"\d+")
     for log in sorted(log_dir.glob("*.md")):
-        text = log.read_text(encoding="utf-8")
+        text = read_doc(log)
         if decision_ids is not None:
             for m in re.finditer(r"^Decisions:\s*(.+)$", text, flags=re.M):
                 for d in id_re.findall(m.group(1)):
@@ -250,7 +255,7 @@ def check_outside_repo_paths(ctx, errors, docs):
         return
     pat = re.compile(outside_re)
     for p in docs:
-        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+        for i, line in enumerate(read_doc(p).splitlines(), 1):
             if line_ignored(line, "outside-repo-paths"):
                 continue
             if pat.search(line):
@@ -260,7 +265,7 @@ def check_outside_repo_paths(ctx, errors, docs):
 def check_paths_exist(ctx, errors, docs):
     known_roots = top_level_names(ctx)
     for p in docs:
-        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+        for i, line in enumerate(read_doc(p).splitlines(), 1):
             if line_ignored(line, "paths-exist"):
                 continue
             for span in re.findall(r"`([^`]+)`", line):
@@ -278,7 +283,7 @@ def check_banned_headers(ctx, errors, docs):
     for p in docs:
         if decisions_name and p.name == decisions_name:
             continue
-        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+        for i, line in enumerate(read_doc(p).splitlines(), 1):
             if line_ignored(line, "banned-headers"):
                 continue
             if pat.match(line):
@@ -299,7 +304,7 @@ def check_diary_grammar(ctx, errors):
     if not log_dir.exists():
         return
     for log in sorted(log_dir.glob("*.md")):
-        text = log.read_text(encoding="utf-8")
+        text = read_doc(log)
         lines = text.splitlines()
 
         first_idx = None
@@ -346,7 +351,7 @@ def check_archive_banner_paths(ctx, errors):
         return
     known_roots = top_level_names(ctx)
     for p in sorted(ctx.archive_dir.glob("*.md")):
-        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+        for i, line in enumerate(read_doc(p).splitlines(), 1):
             if any(w in line for w in BANNER_WORDS):
                 scan_line_for_paths(ctx, errors, p, i, line, "archive disposition banner", known_roots,
                                      "archive-banner-paths")
@@ -362,7 +367,7 @@ def check_open_questions_sync(ctx, errors):
         return
     prefix = re.escape(cfg["id_prefix"])
     id_re = prefix + r"\d+"
-    text = p.read_text(encoding="utf-8")
+    text = read_doc(p)
     m = re.search(rf"^{re.escape(start)}\n(.*?)^{re.escape(end)}", text, flags=re.M | re.S)
     if not m:
         errors.append(f"{cfg['decisions_file']}: '{start}' ... '{end}' section not found")
@@ -394,7 +399,7 @@ def check_routing_coverage(ctx, errors):
     if not routing_path.exists():
         errors.append(f"{cfg['routing_file']}: file does not exist")
         return
-    routing_text = routing_path.read_text(encoding="utf-8")
+    routing_text = read_doc(routing_path)
     routed = set(re.findall(r"`([^`]+)`", routing_text))
     exempt_topdirs = tuple(cfg["routing_exempt_topdirs"])
     for ext in ("*.md", "*.html"):
@@ -402,7 +407,7 @@ def check_routing_coverage(ctx, errors):
             rel = p.relative_to(ctx.docs)
             if rel.parts and rel.parts[0] in exempt_topdirs:
                 continue
-            text = p.read_text(encoding="utf-8")
+            text = read_doc(p)
             if NO_ROUTE_MARKER in text:
                 continue
             if any(m.group(1) == "routing-coverage" for m in SUPPRESS_RE.finditer(text)):
@@ -420,7 +425,7 @@ def check_file_map_cap(ctx, errors):
     p = ctx.root / cfg["file_map"]
     if not p.exists():
         return
-    n = len(p.read_text(encoding="utf-8").splitlines())
+    n = len(read_doc(p).splitlines())
     if n > cfg["file_map_cap"]:
         errors.append(f"{cfg['file_map']}: {n} lines, over the {cfg['file_map_cap']}-line cap")
 
@@ -631,7 +636,7 @@ def _selfcheck():
         "## D-002 — b\n"
         "Status: superseded   Verdict: adopted\n\n"
         "## D-003 — c\n"
-        "Status: open   Verdict: unresolved\n",
+        "Status: open Verdict: unresolved\n",  # single-space fields must still parse
         encoding="utf-8",
     )
     (tmp / "docs" / "archive" / "BANNER.md").write_text(
@@ -640,11 +645,13 @@ def _selfcheck():
     )
     (tmp / "CLAUDE.md").write_text(
         "See `docs/DOES_NOT_EXIST.md` and `C:\\Users\\x\\.claude\\plans\\p.md`.\n"
+        "and a unix one `/home/me/notes.md`.\n"
         "## TODO later\n"
         "`docs/SUPPRESSED_MISSING.md` should not fire. <!-- check-docs: ignore paths-exist -->\n",
         encoding="utf-8",
     )
     (tmp / "README.md").write_text("fine\n", encoding="utf-8")
+    (tmp / "docs" / "MOJIBAKE.md").write_bytes(b"# t\n\xff\xfe not utf-8\n")
     (tmp / "docs" / "ORPHAN.md").write_text("unrouted doc\n", encoding="utf-8")
     (tmp / "docs" / "FILE_MAP.md").write_text("\n".join(f"line {i}" for i in range(70)) + "\n", encoding="utf-8")
     (tmp / "docs" / "log" / "2099-01.md").write_text("Decisions: D-999\nDocs: nope.md\n", encoding="utf-8")
@@ -699,6 +706,9 @@ def _selfcheck():
     assert any("not routed in" in e for e in found), found
     assert any("over the 5-line cap" in e for e in found), found  # local CONFIG override fired
     assert any("LOCAL: fixture finding" in e for e in found), found
+    assert any("Decisions: references unknown" in e for e in found), found
+    assert any("CLAUDE.md:2: absolute/outside-repo path" in e for e in found), found  # unix absolute path, not just Windows
+    assert not any("D-003 bad/missing" in e for e in found), found  # single-space fields parse
 
     # local-raises-on-import case, separate tmp dir
     tmp2 = Path(tempfile.mkdtemp())

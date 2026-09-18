@@ -13,14 +13,14 @@ happened and when).
 Ask: **"What questions does this repo need to answer?"** Aim for 5-12 rows — each becomes one
 routing-table row and (usually) one file. Let the user edit the list.
 
-If the user says **"just use defaults"**, skip the interview and scaffold the DK layout
+If the user says **"just use defaults"**, skip the interview and scaffold the default layout
 wholesale: `README.md` (what/setup/run), `docs/DECISIONS.md` (what we believe and why),
 `docs/log/<period>.md` (what happened, current state), plus whatever `docs/research/*.md`
 subject files the repo obviously needs (ask once, briefly, which subjects — don't guess a
 long list).
 
 From the list, derive:
-- **File names.** Use the DK layout's names as the default pattern
+- **File names.** Use the default layout's names as the default pattern
   (`docs/DECISIONS.md`, `docs/log/<period>.md`, `docs/research/<subject>.md`) unless the
   repo already has a strong convention.
 - **Log period.** A season, a quarter, a year — whatever this repo's natural work cadence is.
@@ -28,7 +28,7 @@ From the list, derive:
 
 ## 3. Rules to adapt into CLAUDE.md
 
-Carry these DK rules over **verbatim** (they're about the doc system itself, not this
+Carry these rules over **verbatim** (they're about the doc system itself, not this
 particular repo):
 - Rewrite docs to remove obsolete text; never append a correction above or below text that
   still reads as current.
@@ -42,12 +42,12 @@ particular repo):
 - Before ending any session that edited `docs/`, run the checker; it must exit 0. The
   pre-commit hook enforces the same check at commit time.
 
-**Ask** about these — they're repo-specific and DK's wording won't fit as-is:
+**Ask** about these — they're repo-specific, so no generic wording will fit as-is:
 - Where scripts run from / what path literals are relative to.
-- What may never be deleted without explicit confirmation (DK: R scripts, `.rds` models).
+- What may never be deleted without explicit confirmation (e.g. trained model artifacts).
 - What must be cross-checked before trusting a data file, or before renaming/moving one.
 - No test suite / CI caveat, if true here.
-- Any one-off "don't re-flag this" rule (DK: a committed `.Renviron`).
+- Any one-off "don't re-flag this" rule (e.g. a deliberately committed env file).
 
 ## 4. Never overwrite an existing CLAUDE.md or DECISIONS.md
 
