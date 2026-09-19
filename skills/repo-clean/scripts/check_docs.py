@@ -2,9 +2,9 @@
 """Generic docs hygiene checker. Stdlib only. A config-driven core plus an
 optional check_docs_local.py extension point for repo-specific rules.
 
-Exit 0 and silent on success. Exit 1 on doc findings, exit 2 on an internal error
-(bad --root, local-file import failure, CONFIG_VERSION mismatch). Prints one line per
-finding either way.
+Exit 0 on success, printing one line stating that shape was verified and content
+was not. Exit 1 on doc findings, exit 2 on an internal error (bad --root, local-file
+import failure, CONFIG_VERSION mismatch). Prints one line per finding either way.
 
 Generic rules (stable string ids, used as CONFIG keys, in inline suppression comments,
 and in output):
@@ -40,7 +40,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CORE_VERSION = "1.0.0"
+CORE_VERSION = "1.1.0"
 CONFIG_VERSION = 1
 
 CONFIG = {
