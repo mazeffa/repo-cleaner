@@ -86,3 +86,12 @@ against the case D-002 couldn't address at all — losing the record when contex
 Making git optional was also agreed: this is an agent memory/logging system, not a
 git-dependent workflow tool.
 
+
+## D-009 — This repo's own docs ship public, as the worked example
+Status: active   Verdict: adopted   Date: 2026-09-19
+Decision: `docs/DECISIONS.md`, `docs/DEFECTS.md`, and `docs/log/` stay tracked and public.
+Only generated review transcripts (`.council/`) and bytecode are ignored.
+Why: The plugin's claim is that it runs on itself; the defect list and log are the only
+evidence a visitor can check. The cost is ~26KB of unused files in each user's plugin
+cache, which is not worth a pluginignore. Identity and private-project content were
+scrubbed on 2026-09-18, so nothing in them is sensitive.
