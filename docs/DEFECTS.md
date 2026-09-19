@@ -11,8 +11,8 @@ rule *can* fire, and none proved a rule stays quiet when it should. The rebuilt 
 repro below.
 
 `Status:` is `confirmed` (reproduced here), `reported` (found by the pass, not independently
-reproduced), or `fixed` (with the commit that closed it). All 22 are now fixed; see
-`git log --oneline -- skills/repo-clean/scripts/check_docs.py` for the closing commit.
+reproduced), or `fixed` (with the commit that closed it). All 22 are now fixed, closed by
+commit `724dd50`.
 
 ## Fixed 2026-09-19
 
