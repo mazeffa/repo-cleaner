@@ -56,7 +56,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CORE_VERSION = "1.2.0"
+CORE_VERSION = "1.3.0"  # bump on any content change; core_digest() catches what this misses
 CONFIG_VERSION = 1
 
 

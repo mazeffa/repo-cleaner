@@ -64,8 +64,10 @@ that looks more authoritative than it is does more harm than no checker.
 `scripts/tools/check_docs.py`. If the repo has `.git`, it also copies
 `skills/repo-clean/scripts/pre-commit` to `scripts/hooks/pre-commit` and runs
 `git config core.hooksPath scripts/hooks`. `maintain`/`reorganize` never
-install anything — `maintain` step 7 only reports version drift and prints the
-re-sync command. Re-syncing the checker core is `cp <skill>/scripts/check_docs.py
+install anything. The SessionStart hook already reports checker drift, once per
+drift state, every session; `maintain` step 7 is the manual check for repos
+without hooks installed, and prints the re-sync command. Re-syncing the
+checker core is `cp <skill>/scripts/check_docs.py
 scripts/tools/check_docs.py` — it never touches your `check_docs_local.py`.
 
 You can also run the checker directly, without a session:

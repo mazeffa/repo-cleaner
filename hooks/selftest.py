@@ -161,6 +161,20 @@ def test_stop(base):
     check("stop: giving-up text names unverified", "entry passed unverified" in err, err)
 
 
+def test_stop_drift(base):
+    repo = make_scratch_repo(base)
+    home = base / "home_drift"
+    checker = repo / "scripts" / "tools" / "check_docs.py"
+    checker.write_text(checker.read_text(encoding="utf-8") + "# drifted\n", encoding="utf-8")
+
+    write_session(home, "d1", {"files": ["README.md"], "pending": False})
+    rc, out, err = run_hook("stop.py", {"session_id": "d1", "cwd": str(repo)}, home)
+    check("stop: drift note in block reason", "differs from the plugin's" in err, err)
+    rc, out, err = run_hook("stop.py", {"session_id": "d1", "cwd": str(repo)}, home)
+    check("stop: drift note repeats on second block, ungated",
+          "differs from the plugin's" in err, err)
+
+
 def test_stop_wrapped_state(base):
     repo = make_scratch_repo(base)
     home = base / "home_wrap"
@@ -258,6 +272,42 @@ def test_session_start(base):
     check("session_start: carryover message printed", "Carried" in out, out)
 
 
+def test_session_start_drift(base):
+    repo = make_scratch_repo(base)
+    checker = repo / "scripts" / "tools" / "check_docs.py"
+
+    home = base / "home_drift1"
+    rc, out, err = run_hook("session_start.py", {"session_id": "u1", "cwd": str(repo)}, home)
+    check("session_start: no drift line for unchanged scratch repo", "Checker differs" not in out, out)
+
+    checker.write_text(checker.read_text(encoding="utf-8") + "# drifted\n", encoding="utf-8")
+    home = base / "home_drift2"
+    rc, out, err = run_hook("session_start.py", {"session_id": "u2", "cwd": str(repo)}, home)
+    check("session_start: drift message present", "Checker differs" in out, out)
+    check("session_start: same version, different bytes", "same version, different bytes" in out, out)
+    check("session_start: tells the user not to overwrite", "Do not overwrite" in out, out)
+    rc, out2, err = run_hook("session_start.py", {"session_id": "u2", "cwd": str(repo)}, home)
+    check("session_start: drift message suppressed on repeat", "Checker differs" not in out2, out2)
+
+    checker.write_text(
+        checker.read_text(encoding="utf-8").replace('CORE_VERSION = "1.3.0"', 'CORE_VERSION = "0.9.0"'),
+        encoding="utf-8",
+    )
+    home = base / "home_drift3"
+    rc, out, err = run_hook("session_start.py", {"session_id": "u3", "cwd": str(repo)}, home)
+    check("session_start: behind direction", "behind" in out, out)
+
+    checker.write_text(
+        checker.read_text(encoding="utf-8").replace('CORE_VERSION = "0.9.0"', 'CORE_VERSION = "garbage"'),
+        encoding="utf-8",
+    )
+    home = base / "home_drift4"
+    rc, out, err = run_hook("session_start.py", {"session_id": "u4", "cwd": str(repo)}, home)
+    check("session_start: unknown direction exits 0", rc == 0, (out, err))
+    check("session_start: unknown direction in message", "unknown" in out, out)
+    check("session_start: no traceback on stderr", "Traceback" not in err, err)
+
+
 def test_bad_input(base):
     repo = make_scratch_repo(base)
     home = base / "home_bad"
@@ -294,8 +344,10 @@ def main():
         test_post_tool_use(base)
         test_stop(base)
         test_stop_wrapped_state(base)
+        test_stop_drift(base)
         test_precompact(base)
         test_session_start(base)
+        test_session_start_drift(base)
         test_bad_input(base)
         test_pre_commit(base)
 

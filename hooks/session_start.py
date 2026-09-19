@@ -6,7 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _lib import (
-    carry_over_orphans, checker_path, last_state_line, read_stdin_json, setup_already_offered,
+    carry_over_orphans, checker_drift, checker_path, drift_unreported, last_state_line,
+    read_stdin_json, setup_already_offered,
 )
 
 
@@ -24,6 +25,10 @@ def main():
         carried = carry_over_orphans(session_id, cwd)
         if carried:
             print(f"Carried {carried} unlogged changes from a previous session")
+
+    drift = checker_drift(cwd)
+    if drift and drift_unreported(cwd, drift):
+        print(drift)
 
     state = last_state_line(cwd)
     if state:

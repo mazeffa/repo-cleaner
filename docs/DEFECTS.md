@@ -185,6 +185,12 @@ Was: four shipped releases claimed `CORE_VERSION = "1.0.0"` with different code:
 | 0.2.2 | 1.1.0 | 12 | yes | — |
 | 0.3.0 | 1.2.0 | 12 | yes | 9bafef37 |
 | 0.3.1 | 1.2.0 | 12 | yes | 9bafef37 |
+| 0.3.2 | 1.2.0 | 12 | yes | dda3df32 |
+| 0.3.3 | 1.3.0 | 12 | yes | 6f7504ae |
+
+0.3.2 reproduced this defect's headline even after adding `core_digest()`: it and 0.3.1
+both print `CORE_VERSION 1.2.0` with different bytes (`9bafef37` vs `dda3df32`), and
+nothing ran the comparison unasked.
 
 0.1.2 → 0.2.0 added a whole rule without bumping the version; the other three 1.0.0 builds
 differ byte-for-byte. A target repo (core copied in 2026-09-18) is a fifth distinct
@@ -223,14 +229,31 @@ diary-grammar change (now rejects `(1)` on the first entry of a date), the rest 
 a 44-finding wall and a blocked commit with nothing saying these are rule changes, not rot.
 
 Fix: `core_digest()` hashes the checker's own source (newlines normalized, so a CRLF
-checkout and an LF one agree) and `--version` now prints `CORE_VERSION 1.2.0+<8hex>
+checkout and an LF one agree) and `--version` prints `CORE_VERSION 1.3.0+<8hex>
 (CONFIG_VERSION 1)`. `maintain.md` step 7 compares the full `--version` line, digest
-included, instead of the version strings alone, so two builds sharing a `CORE_VERSION` no
-longer compare equal. `CORE_VERSION` itself is no longer the identity mechanism, so it is
-not bumped for this fix.
+included, instead of the version strings alone. That closed the mechanism but not the
+symptom: 0.3.2 shipped it and still reproduced the headline, because nothing ran the
+comparison unasked — the only signal was prose that fires when a human types
+`/repo-clean maintain`. `hooks/_lib.py:checker_drift()` now computes the same comparison
+itself (it doesn't need `--version` from the target; it hashes both checkers directly, so
+it also works against pre-0.3.2 targets that print no digest) and reports direction —
+behind, ahead, or same version with different bytes. `session_start.py` prints it once per
+distinct drift state, as a finding for the user to act on, not an instruction; `stop.py`
+adds a short note to every block reason while the drift persists, since a user who ignores
+the once-per-state SessionStart line would otherwise see nothing again. `CORE_VERSION` is
+bumped to 1.3.0 here — not because a rule changed, but because 1.2.0 already named two
+different builds (0.3.1 without a digest, 0.3.2 with one) and 1.3.0 is the label 0.3.2's
+checker should have had.
 
-Remaining ideas from the original fix directions are improvements, not part of this defect:
-moving drift detection into `session_start.py` so it runs every session unasked; bumping
-`CONFIG_VERSION` when a rule change requires new target-doc structure and naming the
-responsible rule ids; offering the re-sync `cp` instead of just printing it.
+What is still true after this fix: `run_checker()` executes whatever checker the target
+repo actually has, so a stale ruleset is what the pre-commit gate enforces until the user
+re-syncs it. The fix makes the hooks say so instead of staying silent about it; it does not
+make the gate itself version-aware. Cost of saying so: the SessionStart line is silent
+after the first time a given drift state is seen, but the Stop clause is ungated and
+repeats on every block for as long as the repo stays un-synced — chosen so the nag can't be
+outwaited by retrying Stop; if that turns out to be the complaint, revisit it there.
+
+Remaining ideas from the original fix directions are improvements, not part of this
+defect: bumping `CONFIG_VERSION` when a rule change requires new target-doc structure and
+naming the responsible rule ids; offering the re-sync `cp` instead of just printing it.
 

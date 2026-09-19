@@ -86,8 +86,11 @@ Four hooks, shipped in `hooks/` and wired in `plugin.json`, make the doc system 
 instead of relying on the model to remember it:
 
 - **SessionStart.** If the repo has no routing table or no checker, it says so and points
-  at `/repo-clean init`. Otherwise it prints the log's last `State:` line, so the session
-  starts with the current picture instead of re-discovering it.
+  at `/repo-clean init`. Otherwise, if the target's checker differs from the plugin's, it
+  prints a finding once per drift state (target/plugin version and digest, and direction:
+  behind, ahead, or same version with different bytes) — never an instruction to re-sync.
+  It then prints the log's last `State:` line, so the session starts with the current
+  picture instead of re-discovering it.
 - **PostToolUse** (`Edit`/`Write`/`MultiEdit`/`NotebookEdit`). Records which file just
   changed, keyed to this session. No output, no cost — bookkeeping only.
 - **Stop.** If this session changed files, it does the log work itself: creates or updates
@@ -132,3 +135,5 @@ the repo-specific extension point and survives every re-sync.
 - Move or delete a file without explicit confirmation from the user.
 - Write anything outside the target repo.
 - Claim the checker passed without having actually run it this session.
+- Overwrite a tracked repo file (including re-syncing the checker) without the user's
+  confirmation.

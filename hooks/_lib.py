@@ -2,6 +2,7 @@
 Stdlib only. Session state lives outside the repo (per-session, keyed by session_id)
 so it works the same whether or not the repo has git.
 """
+import hashlib
 import json
 import os
 import re
@@ -85,6 +86,97 @@ def checker_path(root):
         if p.exists():
             return p
     return None
+
+
+CORE_VERSION_RE = re.compile(r'^CORE_VERSION\s*=\s*"([^"]*)"', re.M)
+
+
+def _core_version_and_digest(path):
+    try:
+        source = path.read_bytes().replace(b"\r\n", b"\n")
+    except OSError:
+        return None, None
+    m = CORE_VERSION_RE.search(source.decode("utf-8", errors="replace"))
+    version = m.group(1) if m else None
+    digest = hashlib.sha256(source).hexdigest()[:8]
+    return version, digest
+
+
+def _parse_version(v):
+    try:
+        return tuple(int(part) for part in v.split("."))
+    except (AttributeError, ValueError):
+        return None
+
+
+def _drift_detail(cwd):
+    """None, or (target_plugin_summary, direction) for the target's checker vs. the
+    plugin's. Digests are computed here (not read from --version) so this also works
+    against pre-0.3.2 targets whose checker prints no digest of its own."""
+    plugin_root = Path(__file__).resolve().parent.parent
+    plugin_p = checker_path(plugin_root)
+    target_p = checker_path(cwd)
+    if plugin_p is None or target_p is None:
+        return None
+
+    plugin_src = plugin_p.read_bytes().replace(b"\r\n", b"\n")
+    target_src = target_p.read_bytes().replace(b"\r\n", b"\n")
+    if plugin_src == target_src:
+        return None
+
+    target_version, target_digest = _core_version_and_digest(target_p)
+    plugin_version, plugin_digest = _core_version_and_digest(plugin_p)
+
+    tv, pv = _parse_version(target_version), _parse_version(plugin_version)
+    if tv is None or pv is None:
+        direction = "unknown"
+    elif tv < pv:
+        direction = "behind"
+    elif tv > pv:
+        direction = "ahead"
+    else:
+        direction = "same version, different bytes"
+
+    summary = f"target {target_version}+{target_digest}, plugin {plugin_version}+{plugin_digest}"
+    return summary, direction
+
+
+def checker_drift(cwd):
+    """None, or a finding message, if the target's checker differs from the plugin's."""
+    detail = _drift_detail(cwd)
+    if detail is None:
+        return None
+    summary, direction = detail
+    return (
+        f"Checker differs from the plugin's ({summary}: {direction}; digests computed "
+        "by the hook). Do not overwrite it; tell the user and let them decide whether "
+        "to re-sync (see maintain step 7)."
+    )
+
+
+def checker_drift_summary(cwd):
+    """None, or 'target X, plugin Y' - the short form used in the Stop block reason."""
+    detail = _drift_detail(cwd)
+    return detail[0] if detail else None
+
+
+DRIFT_FILE = BASE_DIR / "drift.json"
+
+
+def drift_unreported(cwd, message):
+    """True the first time this exact drift message is seen for this cwd; records it
+    either way so a resolved-then-different drift state fires again."""
+    norm = normalize_cwd(cwd)
+    try:
+        seen = json.loads(DRIFT_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        seen = {}
+    is_new = seen.get(norm) != message
+    if is_new:
+        seen[norm] = message
+        DRIFT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        DRIFT_FILE.write_text(json.dumps(seen), encoding="utf-8")
+    return is_new
 
 
 def run_checker(root):

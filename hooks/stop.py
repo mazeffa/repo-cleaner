@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _lib import (
-    entry_has_placeholder, entry_line_no, ensure_entry, latest_log_file,
+    checker_drift_summary, entry_has_placeholder, entry_line_no, ensure_entry, latest_log_file,
     load_session, read_stdin_json, run_checker, save_session,
 )
 
@@ -58,6 +58,9 @@ def main():
         reasons.append('the headline and/or State: sentence are still "TBD"')
     if not checker_clean:
         reasons.append(f"the checker found issues:\n{findings[1].strip()}")
+    drift = checker_drift_summary(cwd)
+    if drift:
+        reasons.append(f"note: the checker that ran differs from the plugin's ({drift})")
     reason_text = "; ".join(reasons)
 
     rel = log.relative_to(cwd)
