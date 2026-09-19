@@ -290,3 +290,21 @@ before they produced a visible duplicate stub. The log grammar carries no sessio
 there is no real discriminator; a merged `Docs:` line is preferred to a stub that has to be
 cleaned up by hand.
 
+### DEF-26 — DEF-25's overlap scan takes the first Docs: line, not the last
+Status: fixed
+Found live, immediately after landing D-010's log entry (10): that entry's own body opens
+a sentence with "Docs: `docs/DECISIONS.md` gets D-010. ...", and the next Stop call
+produced a duplicate stub `(11)` instead of adopting it — the exact failure DEF-25 was
+supposed to close.
+Was: DEF-25's overlap scan and `_merge_docs_line()` both walked forward from the heading
+and used the *first* line starting with `Docs:`, unbounded to the end of the file. A body
+sentence that happens to start with that reserved field prefix — legal by
+`check_docs.py`'s own `parse_fields`, whose column-0 field grammar has the same
+ambiguity — is found before the entry's real, trailing `Docs:` line, so the overlap check
+compares against prose instead of the actual file list and reports no overlap.
+`check_docs.py` itself is unaffected: `parse_fields` lets a later field assignment
+overwrite an earlier one, so the real trailing line already won there before this fix.
+Fix: `_lib.py` gains `_docs_field_index()`, used by both `_merge_docs_line()` and
+`ensure_entry()`'s adoption scan — it walks the entry (bounded to the next heading) and
+returns the *last* matching line, mirroring `parse_fields`' last-wins semantics instead of
+first-match.

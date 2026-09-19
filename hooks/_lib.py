@@ -309,16 +309,30 @@ def _strip_last_state(lines):
     return lines
 
 
+def _docs_field_index(lines, heading_idx):
+    """Index of the entry's own Docs: line, or None. Bounded to this entry (up to the
+    next heading) and takes the LAST line starting with "Docs:" in that range, matching
+    check_docs.py's parse_fields (later occurrences win) - so a body sentence that
+    happens to start with "Docs:", a reserved field prefix, before the real trailing
+    field is never mistaken for it."""
+    found = None
+    for i in range(heading_idx + 1, len(lines)):
+        if HEADING_RE.match(lines[i]):
+            break
+        if lines[i].startswith("Docs:"):
+            found = i
+    return found
+
+
 def _merge_docs_line(lines, heading, files):
     try:
         start = lines.index(heading)
     except ValueError:
         return lines
-    for i in range(start, len(lines)):
-        if lines[i].startswith("Docs:"):
-            existing = [f.strip() for f in lines[i][len("Docs:"):].split(",") if f.strip()]
-            lines[i] = "Docs: " + ", ".join(sorted(set(existing) | set(files)))
-            return lines
+    i = _docs_field_index(lines, start)
+    if i is not None:
+        existing = [f.strip() for f in lines[i][len("Docs:"):].split(",") if f.strip()]
+        lines[i] = "Docs: " + ", ".join(sorted(set(existing) | set(files)))
     return lines
 
 
@@ -368,14 +382,13 @@ def ensure_entry(root, session, files):
             heading = last_match.group(0)
             existing_docs = set()
             idx = lines.index(heading)
-            for i in range(idx, len(lines)):
-                if lines[i].startswith("Docs:"):
-                    doc_start, doc_end = _field_span(lines, i)
-                    joined = " ".join(lines[doc_start:doc_end])
-                    existing_docs = {
-                        f.strip() for f in joined[len("Docs:"):].split(",") if f.strip()
-                    }
-                    break
+            doc_i = _docs_field_index(lines, idx)
+            if doc_i is not None:
+                doc_start, doc_end = _field_span(lines, doc_i)
+                joined = " ".join(lines[doc_start:doc_end])
+                existing_docs = {
+                    f.strip() for f in joined[len("Docs:"):].split(",") if f.strip()
+                }
             if existing_docs & set(files):
                 lines = _merge_docs_line(lines, heading, files)
                 session["entry_date"], session["entry_n"] = (
