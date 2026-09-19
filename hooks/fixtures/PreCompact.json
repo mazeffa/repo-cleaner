@@ -1,0 +1,10 @@
+{
+ "session_id": "86778159-b737-4655-806b-ffd21466d2f4",
+ "transcript_path": "C:\\Users\\ry\\.claude\\projects\\c--claude-repo-clean\\86778159-b737-4655-806b-ffd21466d2f4.jsonl",
+ "cwd": "C:\\claude\\repo-clean",
+ "scratchpad_dir": "C:\\Users\\ry\\AppData\\Local\\Temp\\claude\\c--claude-repo-clean\\86778159-b737-4655-806b-ffd21466d2f4\\scratchpad",
+ "prompt_id": "f00bb845-527b-4373-b9e5-5a8070408f0e",
+ "hook_event_name": "PreCompact",
+ "trigger": "manual",
+ "custom_instructions": null
+}
