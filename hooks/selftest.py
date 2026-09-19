@@ -38,24 +38,29 @@ def make_scratch_repo(base):
     dest = base / f"réviser projet {_scratch_n[0]}"  # non-ASCII + space
     shutil.copytree(
         REPO_ROOT, dest,
-        ignore=shutil.ignore_patterns(".git", "__pycache__", "fixtures"),
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
     )
     return dest
 
 
-def payload(fixture, **fields):
-    if fixture and (FIXTURES_DIR / fixture).exists():
-        data = json.loads((FIXTURES_DIR / fixture).read_text(encoding="utf-8"))
-        data.update(fields)
-        return data
-    return fields
+EVENT_OF = {"post_tool_use.py": "PostToolUse", "stop.py": "Stop",
+            "pre_compact.py": "PreCompact", "session_start.py": "SessionStart"}
+
+
+def payload(name, fields):
+    """Test fields overlaid on the real payload captured from a live Claude Code session
+    (hooks/fixtures/<Event>.json), so every assertion runs against the real key set."""
+    f = FIXTURES_DIR / f"{EVENT_OF.get(name, '')}.json"
+    data = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    data.update(fields)
+    return data
 
 
 def run_hook(name, data, home, input_text=None):
     env = dict(os.environ)
     env["REPO_CLEAN_HOME"] = str(home)
     env["PYTHONIOENCODING"] = "utf-8"
-    stdin = input_text if input_text is not None else json.dumps(data)
+    stdin = input_text if input_text is not None else json.dumps(payload(name, data))
     out = subprocess.run(
         [sys.executable, str(HOOKS_DIR / name)],
         input=stdin, capture_output=True, text=True, encoding="utf-8", env=env,
@@ -261,7 +266,7 @@ def test_bad_input(base):
         check(f"{hook}: empty stdin exits 0", rc == 0, (out, err))
         rc, out, err = run_hook(hook, None, home, input_text="not json{{{")
         check(f"{hook}: non-JSON stdin exits 0", rc == 0, (out, err))
-        rc, out, err = run_hook(hook, {"foo": "bar"}, home)
+        rc, out, err = run_hook(hook, None, home, input_text=json.dumps({"foo": "bar"}))
         check(f"{hook}: missing keys exits 0", rc == 0, (out, err))
 
 

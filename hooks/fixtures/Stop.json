@@ -1,0 +1,16 @@
+{
+ "session_id": "86778159-b737-4655-806b-ffd21466d2f4",
+ "transcript_path": "C:\\Users\\ry\\.claude\\projects\\c--claude-repo-clean\\86778159-b737-4655-806b-ffd21466d2f4.jsonl",
+ "cwd": "C:\\claude\\repo-clean",
+ "scratchpad_dir": "C:\\Users\\ry\\AppData\\Local\\Temp\\claude\\c--claude-repo-clean\\86778159-b737-4655-806b-ffd21466d2f4\\scratchpad",
+ "prompt_id": "7ef6022f-61fa-4ec8-ae03-2ccd2e5e7018",
+ "permission_mode": "auto",
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "Stop",
+ "stop_hook_active": false,
+ "last_assistant_message": "...",
+ "background_tasks": [],
+ "session_crons": []
+}
