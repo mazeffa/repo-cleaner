@@ -12,7 +12,9 @@ and in output):
                          Verdict read to the end of the field, symmetric supersession.
   log-fields-resolve    docs/log/*.md 'Decisions:'/'Docs:' fields resolve to real ids/paths.
   date-stamped-filenames No date-stamped filename under docs/ outside the exempt dirs.
-  outside-repo-paths    No absolute or outside-repo path in a living doc.
+  outside-repo-paths    No out-of-repo path in a living doc. The default catches Windows
+                         drive paths, ~, and /home, /Users, /root; widen outside_path_re for
+                         others (e.g. /opt, /mnt).
   paths-exist           Backtick-quoted repo paths in living docs must exist.
   banned-headers        No TODO/Next Steps/Future Work headers outside the decisions file.
   diary-grammar         Log heading grammar, required fields, last entry needs State:.
@@ -560,9 +562,6 @@ def main(argv):
         return 0
 
     if "--init-config" in argv:
-        root = _resolve_root(argv)
-        if root is None:
-            return 2
         target = Path(__file__).resolve().parent / "check_docs_local.py"
         if target.exists():
             print(f"{target}: already exists, refusing to overwrite")
