@@ -132,6 +132,8 @@ def test_stop(base):
     text = text.replace("— TBD", "— fixed the thing")
     text = text.rsplit("State: TBD", 1)
     text = "State: it works.".join(text)
+    # body text may mention TBD without being a placeholder (found live 2026-09-19)
+    text = text.replace("State: it works.", "Replaced the TBD placeholders.\nState: it works.")
     log.write_text(text, encoding="utf-8")
     rc, out, err = run_hook("stop.py", {"session_id": "s3", "cwd": str(repo)}, home)
     check("stop: passes after headline+State filled", rc == 0, err)

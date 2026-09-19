@@ -23,9 +23,20 @@ def read_stdin_json():
     """Malformed or empty stdin is never a reason to block or crash - treat it as no
     data (missing session_id/cwd/tool_input), same as a payload without those keys."""
     try:
-        return json.load(sys.stdin)
+        raw = sys.stdin.read()
+        data = json.loads(raw)
     except Exception:
         return {}
+    # ponytail: capture switch = a directory that exists. mkdir ~/.claude/repo-clean/capture
+    # and every hook payload lands there as <event>-<ms>.json; rmdir to stop. No env var,
+    # so it takes effect mid-session without restarting Claude Code.
+    cap = BASE_DIR / "capture"
+    if cap.is_dir():
+        try:
+            (cap / f"{data.get('hook_event_name', 'unknown')}-{int(time.time()*1000)}.json").write_text(raw, encoding="utf-8")
+        except Exception:
+            pass
+    return data
 
 HEADING_RE = re.compile(r"^## (\d{4}-\d{2}-\d{2})(?: \((\d+)\))? [—-] .+$", re.M)
 STATE_RE = re.compile(r"^State:\s*(.*)$")
@@ -280,4 +291,9 @@ def entry_has_placeholder(log, session):
     next_heading = re.search(r"\n## \d{4}-\d{2}-\d{2}", entry[1:])
     if next_heading:
         entry = entry[: next_heading.start() + 1]
-    return "TBD" in entry
+    # Only the two placeholder lines count. The body may legitimately mention "TBD"
+    # (e.g. an entry describing this very hook) - found live on 2026-09-19.
+    if heading.rstrip().endswith("— TBD"):
+        return True
+    return any(STATE_RE.match(line) and line.split(":", 1)[1].strip() == "TBD"
+               for line in entry.splitlines())
