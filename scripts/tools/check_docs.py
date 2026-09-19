@@ -626,6 +626,10 @@ def main(argv):
     if errors:
         print(f"\n{len(errors)} issue(s).")
         return 1
+    # Say what a clean run does NOT mean, at the moment someone sees it. The README says
+    # the same thing, but nobody re-reads a README while looking at a green result.
+    n = len(living_docs(ctx))
+    print(f"0 findings across {n} files. Shape verified; content not verified.")
     return 0
 
 
