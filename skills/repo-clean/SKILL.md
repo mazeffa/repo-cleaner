@@ -86,17 +86,19 @@ Four hooks, shipped in `hooks/` and wired in `plugin.json`, make the doc system 
 instead of relying on the model to remember it:
 
 - **SessionStart.** If the repo has no routing table or no checker, it says so and points
-  at `/repo-clean init`. Otherwise, if the target's checker differs from the plugin's, it
-  prints a finding once per drift state (target/plugin version and digest, and direction:
-  behind, ahead, or same version with different bytes) — never an instruction to re-sync.
-  It then prints the log's last `State:` line, so the session starts with the current
-  picture instead of re-discovering it.
+  at `/repo-clean init`. Otherwise, if the fallback checker differs from the thing that
+  actually runs — the plugin's copy for a vendored-only repo, the newest cached core for a
+  plugin-resolving one (see D-010) — it prints a finding once per drift state (version and
+  digest, and direction: behind, ahead, or same version with different bytes) — never an
+  instruction to re-sync. It then prints the log's last `State:` line, so the session
+  starts with the current picture instead of re-discovering it.
 - **PostToolUse** (`Edit`/`Write`/`MultiEdit`/`NotebookEdit`). Records which file just
   changed **inside the repo**; paths outside it are ignored. Keyed to this session. No
   output, no cost — bookkeeping only.
 - **Stop.** If this session changed files, it does the log work itself: creates or updates
   this session's entry (heading, `Decisions:`, `Docs:`), moves `State:` onto it, and runs
-  the checker — then blocks, naming exactly what's unresolved (an unfilled headline/`State:`,
+  the same core the pre-commit resolves to, the same way (D-010) — then blocks, naming
+  exactly what's unresolved (an unfilled headline/`State:`,
   a checker finding, or both). If the log's last entry is already dated today and lists one
   of this session's files, it adopts that entry instead of adding a stub. It keeps blocking
   on retry until fixed, but only for three tries — after that it fails open with a warning
@@ -129,9 +131,11 @@ or it runs automatically from `scripts/hooks/pre-commit` when that file is prese
 - `--version` — prints `CORE_VERSION`, a short digest of the checker's own source, and
   `CONFIG_VERSION`.
 
-Re-syncing the core to a target repo is a straight overwrite: `cp <skill>/scripts/check_docs.py
-<repo>/scripts/tools/check_docs.py`. It never touches `check_docs_local.py` — that file is
-the repo-specific extension point and survives every re-sync.
+The vendored copy in a target repo is a fallback (D-010), not the source of truth once the
+plugin is installed. Refresh it with the same command when you want the fallback current:
+`cp <skill>/scripts/check_docs.py <repo>/scripts/tools/check_docs.py`. It never touches
+`check_docs_local.py` — that file is the repo-specific extension point and survives every
+re-sync.
 
 ## Never
 

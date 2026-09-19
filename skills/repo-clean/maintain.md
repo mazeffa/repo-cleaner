@@ -85,8 +85,10 @@ raise them with the user, in `--check` mode just list them:
 ## 7. Checker version drift
 
 The SessionStart hook already reports this, once per drift state, every session. This
-step is the manual check for a repo without hooks installed: compare the target repo's
-full `--version` line (`python scripts/tools/check_docs.py --version`), digest included,
-against the plugin's copy. If they differ, report "target X, plugin Y" and print the
-re-sync command: `cp <skill>/scripts/check_docs.py <repo>/scripts/tools/check_docs.py`. A
-target that prints no `+digest` predates this check and counts as drift.
+step is the manual check for a repo without hooks installed. Drift here is about the
+fallback copy, `scripts/tools/check_docs.py` (D-010) — not the thing that runs when hooks
+or a plugin-resolving pre-commit are in play. Compare the target repo's full `--version`
+line (`python scripts/tools/check_docs.py --version`), digest included, against the
+plugin's copy. If they differ, report "target X, plugin Y" and print the re-sync command:
+`cp <skill>/scripts/check_docs.py <repo>/scripts/tools/check_docs.py`. A target that
+prints no `+digest` predates this check and counts as drift.

@@ -1,10 +1,15 @@
 #!/bin/sh
-# Docs hygiene gate. Installed via `git config core.hooksPath scripts/hooks` (see README Setup).
-# Runs scripts/tools/check_docs.py from the repo root and blocks the commit on failure.
+# Docs hygiene gate. Installed via `git config core.hooksPath scripts/hooks`.
+# Runs the repo-clean core from the newest installed plugin; falls back to the vendored
+# copy in scripts/tools/ when the plugin is absent (fresh clone, no Claude Code).
 # Bypass in an emergency with `git commit --no-verify`.
 set -e
 cd "$(git rev-parse --show-toplevel)"
-# python3 on most Unixes; bare python on Windows/conda where python3 may be absent.
-if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
-"$PY" scripts/tools/check_docs.py
-if [ -f hooks/selftest.py ]; then "$PY" hooks/selftest.py; fi
+# Probe, don't `command -v`: on Windows `python3` is often the Store alias stub, which is
+# found on PATH but exits nonzero with an install prompt.
+if python3 -c pass >/dev/null 2>&1; then PY=python3; else PY=python; fi
+CACHE="$HOME/.claude/plugins/cache/repo-clean/repo-clean"
+V=$(ls "$CACHE" 2>/dev/null | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+CORE="$CACHE/$V/skills/repo-clean/scripts/check_docs.py"
+[ -f "$CORE" ] || CORE=scripts/tools/check_docs.py
+"$PY" "$CORE" --root .

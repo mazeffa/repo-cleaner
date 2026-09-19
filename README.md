@@ -61,13 +61,16 @@ that looks more authoritative than it is does more harm than no checker.
 ## What gets installed into your repo
 
 `init` copies `skills/repo-clean/scripts/check_docs.py` to
-`scripts/tools/check_docs.py`. If the repo has `.git`, it also copies
-`skills/repo-clean/scripts/pre-commit` to `scripts/hooks/pre-commit` and runs
-`git config core.hooksPath scripts/hooks`. `maintain`/`reorganize` never
-install anything. The SessionStart hook already reports checker drift, once per
+`scripts/tools/check_docs.py` as a fallback for machines without the plugin. If
+the repo has `.git`, it also copies `skills/repo-clean/scripts/pre-commit` to
+`scripts/hooks/pre-commit` and runs `git config core.hooksPath scripts/hooks`.
+That pre-commit — and the Stop hook — run the newest installed plugin core,
+falling back to the vendored copy only when the plugin cache is absent (D-010).
+`maintain`/`reorganize` never install anything. The SessionStart hook already
+reports drift between the fallback copy and whatever actually runs, once per
 drift state, every session; `maintain` step 7 is the manual check for repos
 without hooks installed, and prints the re-sync command. Re-syncing the
-checker core is `cp <skill>/scripts/check_docs.py
+fallback copy is `cp <skill>/scripts/check_docs.py
 scripts/tools/check_docs.py` — it never touches your `check_docs_local.py`.
 
 You can also run the checker directly, without a session:

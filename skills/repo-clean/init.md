@@ -155,13 +155,15 @@ Do not move or touch any pre-existing markdown/html outside what you just scaffo
 
 ## 7. Install the checker
 
-1. Copy `<skill>/scripts/check_docs.py` → `scripts/tools/check_docs.py`. Git is optional:
-   the Stop hook (see Hooks in `SKILL.md`) is the primary enforcement and needs no git.
-2. If `.git` exists: also copy `<skill>/scripts/pre-commit` → `scripts/hooks/pre-commit`,
-   `chmod +x` it (`git update-index --chmod=+x scripts/hooks/pre-commit` if `chmod` isn't
-   available), and `git config core.hooksPath scripts/hooks` — if `core.hooksPath` is
-   already set to something else, warn and ask rather than overriding it. Skip this step
-   entirely when there is no `.git`.
+1. Copy `<skill>/scripts/check_docs.py` → `scripts/tools/check_docs.py` as the fallback for
+   machines without the plugin (D-010). Git is optional: the Stop hook (see Hooks in
+   `SKILL.md`) is the primary enforcement and needs no git.
+2. If `.git` exists: also copy `<skill>/scripts/pre-commit` → `scripts/hooks/pre-commit` —
+   it resolves the newest cached plugin core at commit time, falling back to the vendored
+   copy only when the plugin cache is absent — `chmod +x` it (`git update-index
+   --chmod=+x scripts/hooks/pre-commit` if `chmod` isn't available), and `git config
+   core.hooksPath scripts/hooks` — if `core.hooksPath` is already set to something else,
+   warn and ask rather than overriding it. Skip this step entirely when there is no `.git`.
 3. If no `check_docs_local.py` exists: run `--init-config`, then trim the starter down to
    only the CONFIG keys actually different from the core defaults.
 4. Run `python scripts/tools/check_docs.py` and fix findings until it exits 0.

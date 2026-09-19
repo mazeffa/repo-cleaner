@@ -95,3 +95,24 @@ Why: The plugin's claim is that it runs on itself; the defect list and log are t
 evidence a visitor can check. The cost is ~26KB of unused files in each user's plugin
 cache, which is not worth a pluginignore. Identity and private-project content were
 scrubbed on 2026-09-18, so nothing in them is sensitive.
+
+## D-010 — Plugin core is the authority; the vendored copy is a fallback
+Status: active   Verdict: adopted   Date: 2026-09-19
+Decision: The installed `pre-commit` and the Stop hook both run the newest cached plugin
+core; the vendored `scripts/tools/check_docs.py` stays in git as the fallback for
+machines without the plugin; this plugin's own repo runs its working-tree copy.
+Why: Re-syncing means a hook overwriting a tracked repo file, which `SKILL.md`'s Never
+list forbids and which would dirty `git status` on every plugin update. `local_module_dir()`
+already resolves a repo's `check_docs_local.py` when the core runs from outside the repo, so
+`--root <repo>` from the plugin cache picks up the repo's own rules. With nothing vendored
+as authority, there is nothing to sync and no drift to report.
+Named costs: a plugin update enforces new rules on the next commit unannounced
+(`--no-verify` is the escape hatch); the fallback copy goes stale silently and enforces an
+old ruleset wherever the plugin is absent; "newest cached" can differ from the loaded
+plugin after a downgrade, chosen so the two gates (pre-commit, Stop hook) never split.
+Two clarifications so nobody "fixes" them later: (a) the vendored copy is a fallback but
+not optional — `session_start.py` treats a missing `scripts/tools/check_docs.py` as "not
+set up here", and `running_core()` falls back to it, so deleting it breaks both; (b) drift
+is measured against what the remedy copies from: a plugin-resolving repo compares its
+fallback to the newest cached core (the thing that runs), a vendored-only repo compares to
+the loaded plugin's copy (the thing maintain step 7's `cp` sources from).

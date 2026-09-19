@@ -56,10 +56,12 @@ def payload(name, fields):
     return data
 
 
-def run_hook(name, data, home, input_text=None):
+def run_hook(name, data, home, input_text=None, extra_env=None):
     env = dict(os.environ)
     env["REPO_CLEAN_HOME"] = str(home)
     env["PYTHONIOENCODING"] = "utf-8"
+    if extra_env:
+        env.update(extra_env)
     stdin = input_text if input_text is not None else json.dumps(payload(name, data))
     out = subprocess.run(
         [sys.executable, str(HOOKS_DIR / name)],
@@ -374,6 +376,83 @@ def test_bad_input(base):
         check(f"{hook}: missing keys exits 0", rc == 0, (out, err))
 
 
+def fake_cache(base):
+    """A fake $HOME with two plugin cache version dirs, whose check_docs.py stubs differ
+    only in exit code - so a run that picks 10.0.0 (numeric order) is distinguishable
+    from one that picks 9.0.0 (lexical order)."""
+    home = base / "fakehome"
+    root = home / ".claude" / "plugins" / "cache" / "repo-clean" / "repo-clean"
+    for version, code in (("9.0.0", 1), ("10.0.0", 0)):
+        d = root / version / "skills" / "repo-clean" / "scripts"
+        d.mkdir(parents=True)
+        (d / "check_docs.py").write_text(f"import sys; sys.exit({code})\n", encoding="utf-8")
+    return home
+
+
+def test_plugin_core(base):
+    repo = make_scratch_repo(base)
+    home = base / "home_plugincore"
+    fake_home = fake_cache(base)
+
+    template = (repo / "skills" / "repo-clean" / "scripts" / "pre-commit").read_text(encoding="utf-8")
+    (repo / "scripts" / "hooks" / "pre-commit").write_text(template, encoding="utf-8")
+    (repo / "scripts" / "tools" / "check_docs.py").write_text("import sys; sys.exit(1)\n", encoding="utf-8")
+    env = {"HOME": str(fake_home), "USERPROFILE": str(fake_home)}
+
+    rc, out, err = run_hook("session_start.py", {"session_id": "pc1", "cwd": str(repo)}, home,
+                             extra_env=env)
+    check("plugin core: no 'differs from the plugin's' line", "Checker differs" not in out, out)
+    check("plugin core: fallback drift reported", "Fallback" in out, out)
+    rc2, out2, err2 = run_hook("session_start.py", {"session_id": "pc1b", "cwd": str(repo)}, home,
+                                extra_env=env)
+    check("plugin core: drift message silent on repeat", "Fallback" not in out2, out2)
+
+    (repo / "scratch-only.md").write_text("x\n", encoding="utf-8")
+    write_session(home, "pc2", {"files": ["scratch-only.md"], "pending": False})
+    log = log_path(repo)
+    today = __import__("datetime").date.today().isoformat()
+    heading = f"## {today} — plugin core adoption"
+    log.write_text(
+        log.read_text(encoding="utf-8").rstrip("\n") + "\n\n" + heading +
+        "\n\nDecisions: none\nDocs: scratch-only.md\nState: something true.\n",
+        encoding="utf-8",
+    )
+    rc, out, err = run_hook("stop.py", {"session_id": "pc2", "cwd": str(repo)}, home,
+                             extra_env=env)
+    check("plugin core: stop exits 0 (10.0.0 stub ran, adopted entry)", rc == 0, err)
+
+    (repo / "scratch-only-2.md").write_text("x\n", encoding="utf-8")
+    write_session(home, "pc3", {"files": ["scratch-only-2.md"], "pending": False})
+    rc, out, err = run_hook("stop.py", {"session_id": "pc3", "cwd": str(repo)}, home,
+                             extra_env=env)
+    check("plugin core: stub path blocks on TBD", rc == 2, err)
+    check("plugin core: block reason has no plugin-drift note",
+          "differs from the plugin's" not in err, err)
+
+    sh = shutil.which("sh") or shutil.which("bash")
+    if sh is None:
+        print("skip: plugin-core pre-commit test (no sh/bash on PATH)")
+        return
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    pc_env = dict(os.environ)
+    pc_env["PYTHONIOENCODING"] = "utf-8"
+    pc_env["HOME"] = str(fake_home)
+    out = subprocess.run([sh, str(repo / "scripts" / "hooks" / "pre-commit")],
+                          cwd=repo, capture_output=True, text=True, encoding="utf-8", env=pc_env)
+    check("plugin core: pre-commit picks 10.0.0 numerically, exits 0",
+          out.returncode == 0, out.stdout + out.stderr)
+
+    empty_home = base / "emptyhome"
+    empty_home.mkdir()
+    pc_env["HOME"] = str(empty_home)
+    out = subprocess.run([sh, str(repo / "scripts" / "hooks" / "pre-commit")],
+                          cwd=repo, capture_output=True, text=True, encoding="utf-8", env=pc_env)
+    check("plugin core: no cache falls back to vendored copy, exits nonzero",
+          out.returncode != 0, out.stdout + out.stderr)
+
+
 def test_pre_commit(base):
     repo = make_scratch_repo(base)
     sh = shutil.which("sh") or shutil.which("bash")
@@ -406,6 +485,7 @@ def main():
         test_session_start_unreadable_checker(base)
         test_bad_input(base)
         test_pre_commit(base)
+        test_plugin_core(base)
 
     if _FAILURES:
         print(f"\n{len(_FAILURES)} failure(s):", file=sys.stderr)

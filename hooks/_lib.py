@@ -15,6 +15,11 @@ from pathlib import Path
 BASE_DIR = Path(os.environ.get("REPO_CLEAN_HOME") or (Path.home() / ".claude" / "repo-clean"))
 DATA_DIR = BASE_DIR / "sessions"
 
+# $HOME is what the pre-commit template reads (Git Bash's default), not Path.home()
+# (which reads USERPROFILE on Windows) - this is the one knob the selftest can turn to
+# point both the hook and a `sh`-run pre-commit at the same fake cache.
+CACHE_HOME = Path(os.environ.get("HOME") or Path.home())
+
 
 def normalize_cwd(cwd):
     return os.path.normcase(os.path.realpath(str(cwd)))
@@ -88,6 +93,47 @@ def checker_path(root):
     return None
 
 
+def plugin_root():
+    return Path(__file__).resolve().parent.parent
+
+
+def newest_cached_core():
+    """The check_docs.py of the highest-numbered version dir under the plugin cache, or
+    None if there's no cache (plugin not installed via the marketplace)."""
+    cache = CACHE_HOME / ".claude" / "plugins" / "cache" / "repo-clean" / "repo-clean"
+    best_v, best_p = None, None
+    if not cache.is_dir():
+        return None
+    for d in cache.iterdir():
+        v = _parse_version(d.name)
+        if v is None:
+            continue
+        p = d / "skills" / "repo-clean" / "scripts" / "check_docs.py"
+        if p.exists() and (best_v is None or v > best_v):
+            best_v, best_p = v, p
+    return best_p
+
+
+def core_from_plugin(root):
+    """True if root's pre-commit resolves the checker core from the plugin cache rather
+    than always running the vendored copy - a fact about the installed hook text, not a
+    setting."""
+    try:
+        text = (root / "scripts" / "hooks" / "pre-commit").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return "plugins/cache/repo-clean" in text
+
+
+def running_core(root):
+    """The checker path that actually runs for this repo: the newest cached plugin core
+    when the pre-commit resolves that way (falling back to the vendored copy if the cache
+    is empty), else the vendored copy."""
+    if core_from_plugin(root):
+        return newest_cached_core() or checker_path(root)
+    return checker_path(root)
+
+
 CORE_VERSION_RE = re.compile(r'^CORE_VERSION\s*=\s*"([^"]*)"', re.M)
 
 
@@ -110,12 +156,19 @@ def _parse_version(v):
 
 
 def _drift_detail(cwd):
-    """None, or (target_plugin_summary, direction) for the target's checker vs. the
-    plugin's. Digests are computed here (not read from --version) so this also works
-    against pre-0.3.2 targets whose checker prints no digest of its own."""
-    plugin_root = Path(__file__).resolve().parent.parent
-    plugin_p = checker_path(plugin_root)
+    """None, or (target_plugin_summary, direction) for the fallback checker vs. the
+    thing that actually runs. Digests are computed here (not read from --version) so
+    this also works against pre-0.3.2 targets whose checker prints no digest of its own.
+
+    Drift is measured against what the remedy copies from: when the target's pre-commit
+    resolves from the plugin cache, its fallback copy is compared to the newest cached
+    core (what runs); otherwise it's compared to the loaded plugin's own copy (what
+    maintain step 7's `cp` sources from)."""
     target_p = checker_path(cwd)
+    if core_from_plugin(cwd):
+        plugin_p = newest_cached_core() or checker_path(plugin_root())
+    else:
+        plugin_p = checker_path(plugin_root())
     if plugin_p is None or target_p is None:
         return None
 
@@ -145,11 +198,18 @@ def _drift_detail(cwd):
 
 
 def checker_drift(cwd):
-    """None, or a finding message, if the target's checker differs from the plugin's."""
+    """None, or a finding message, if the target's fallback checker differs from the
+    thing that actually runs there."""
     detail = _drift_detail(cwd)
     if detail is None:
         return None
     summary, direction = detail
+    if core_from_plugin(cwd):
+        return (
+            f"Fallback checker copy scripts/tools/check_docs.py is stale ({summary}: "
+            f"{direction}). The plugin's core is what runs here; keep the fallback, it "
+            "matters where the plugin is absent."
+        )
     return (
         f"Checker differs from the plugin's ({summary}: {direction}; digests computed "
         "by the hook). Do not overwrite it; tell the user and let them decide whether "
@@ -158,7 +218,11 @@ def checker_drift(cwd):
 
 
 def checker_drift_summary(cwd):
-    """None, or 'target X, plugin Y' - the short form used in the Stop block reason."""
+    """None, or 'target X, plugin Y' - the short form used in the Stop block reason.
+    None when the pre-commit resolves from the plugin cache: the checker that ran IS the
+    plugin's core there, so 'differs from the plugin's' would be false."""
+    if core_from_plugin(cwd):
+        return None
     detail = _drift_detail(cwd)
     return detail[0] if detail else None
 
@@ -184,7 +248,7 @@ def drift_unreported(cwd, message):
 
 def run_checker(root):
     """Returns (returncode, stdout) or None if no checker is installed here."""
-    p = checker_path(root)
+    p = running_core(root)
     if p is None:
         return None
     out = subprocess.run(

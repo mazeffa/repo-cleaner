@@ -246,13 +246,16 @@ bumped to 1.3.0 here — not because a rule changed, but because 1.2.0 already n
 different builds (0.3.1 without a digest, 0.3.2 with one) and 1.3.0 is the label 0.3.2's
 checker should have had.
 
-What is still true after this fix: `run_checker()` executes whatever checker the target
-repo actually has, so a stale ruleset is what the pre-commit gate enforces until the user
-re-syncs it. The fix makes the hooks say so instead of staying silent about it; it does not
-make the gate itself version-aware. Cost of saying so: the SessionStart line is silent
-after the first time a given drift state is seen, but the Stop clause is ungated and
-repeats on every block for as long as the repo stays un-synced — chosen so the nag can't be
-outwaited by retrying Stop; if that turns out to be the complaint, revisit it there.
+What is still true after this fix: with a vendored-only pre-commit (pre-0.4.0 repos),
+`run_checker()` executes whatever checker the target repo actually has, so a stale ruleset
+is what the gate enforces until the user re-syncs it — the fix makes the hooks say so
+instead of staying silent about it, but does not make that gate version-aware. With a
+plugin-resolving pre-commit (default from 0.4.0, D-010) the gate runs the current core by
+construction, so this defect's headline doesn't apply there at all. Cost of saying so where
+it still applies: the SessionStart line is silent after the first time a given drift state
+is seen, but the Stop clause is ungated and repeats on every block for as long as the repo
+stays un-synced — chosen so the nag can't be outwaited by retrying Stop; if that turns out
+to be the complaint, revisit it there.
 
 Remaining ideas from the original fix directions are improvements, not part of this
 defect: bumping `CONFIG_VERSION` when a rule change requires new target-doc structure and
