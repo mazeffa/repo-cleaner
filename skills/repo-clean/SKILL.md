@@ -10,7 +10,7 @@ description: >
   "consolidate the docs", or "audit the docs".
   Subcommands: init, maintain (--check for a read-only report), reorganize.
 argument-hint: "init | maintain [--check] | reorganize"
-license: MIT
+license: GPL-3.0-or-later
 ---
 
 # repo-clean
