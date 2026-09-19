@@ -53,8 +53,9 @@ These hold across all three subcommands:
   only current truth. Never edit an old entry's prose to make it read as current.
 - Decisions supersede symmetrically: if A names B in `Superseded-by`, B names A in
   `Supersedes`.
-- The checker must exit 0 before you commit; the pre-commit hook enforces this. Never claim
-  it passed without having run it.
+- The checker must exit 0 before you commit; the Stop hook enforces this every session that
+  changed files, and the pre-commit hook is a backstop where git exists. Never claim it
+  passed without having run it.
 
 ## Vocabulary
 
@@ -79,6 +80,30 @@ These hold across all three subcommands:
 See `example-layout.md` for real excerpts of each of these. It is illustrative, not
 canonical — the inline skeletons in `init.md` are what `init` actually writes.
 
+## Hooks
+
+Four hooks, shipped in `hooks/` and wired in `plugin.json`, make the doc system automatic
+instead of relying on the model to remember it:
+
+- **SessionStart.** If the repo has no routing table or no checker, it says so and points
+  at `/repo-clean init`. Otherwise it prints the log's last `State:` line, so the session
+  starts with the current picture instead of re-discovering it.
+- **PostToolUse** (`Edit`/`Write`/`MultiEdit`/`NotebookEdit`). Records which file just
+  changed, keyed to this session. No output, no cost — bookkeeping only.
+- **Stop.** If this session changed files, it does the log work itself: creates or updates
+  this session's entry (heading, `Decisions:`, `Docs:`), moves `State:` onto it, and runs
+  the checker — then blocks with one short message telling Claude to fill in the headline
+  and a `State:` sentence, plus any checker findings. It keeps blocking on retry until both
+  are done. A reply that only reads or answers, touching no files, is silent and never
+  blocks.
+- **PreCompact.** Folds any pending edits into the log entry before context is lost, so a
+  compaction never drops the record of what changed. Non-blocking — compaction can't be
+  refused, this just leaves something to resume from.
+
+Session state (which files changed, which entry belongs to this session) lives under
+`~/.claude/repo-clean/sessions/`, not in the repo, so this works identically with or
+without git.
+
 ## Checker
 
 `scripts/check_docs.py` is a stdlib-only, config-driven checker. Key flags:
@@ -86,7 +111,8 @@ canonical — the inline skeletons in `init.md` are what `init` actually writes.
 - `--selfcheck` — runs the bundled fixture, asserts every rule fires, prints
   `selfcheck ok, N findings` and exits 0. Use this to sanity-check the checker itself, not a
   target repo.
-- `--init-config` — writes `check_docs_local.py` next to itself (refuses to overwrite an
+- `--init-config` — writes `check_docs_local.py` into the target repo's local-module dir
+  (`scripts/tools/` if the script isn't already installed there; refuses to overwrite an
   existing one).
 - `--root PATH` — repo root to check; defaults to `git rev-parse --show-toplevel`.
 - `--version` — prints `CORE_VERSION` and `CONFIG_VERSION`.

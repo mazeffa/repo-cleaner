@@ -25,8 +25,9 @@ Why: The plugin did not use its own system, so every design decision lived only 
 and nothing tested whether the system is pleasant to live with.
 
 ## D-002 — Drop the session-end checker gate
-Status: active   Verdict: adopted   Date: 2026-09-18
+Status: superseded   Verdict: adopted   Date: 2026-09-18
 Supersedes: D-003
+Superseded-by: D-008
 Decision: Remove all "before ending a session, run the checker" language. The pre-commit
 hook is the only gate.
 Why: No event tells a model a session is ending, so the instruction never fired. A Stop
@@ -71,4 +72,17 @@ Why: An adversarial pass found 22 defects and there was no routing row that owne
 they existed only in a chat transcript — the exact failure this system exists to prevent,
 in this repo. A README section was the alternative; rejected because the list churns as
 fixes land and 22 reproductions do not belong in an install guide.
+
+## D-008 — Hooks are primary, git hook is a backstop
+Status: active   Verdict: adopted   Date: 2026-09-18
+Supersedes: D-002
+Decision: A SessionStart/PostToolUse/Stop/PreCompact hook set (see Hooks in
+`skills/repo-clean/SKILL.md`) forces setup, logging, and a clean checker run every session
+that changed files, independent of git. The pre-commit hook still runs where `.git` exists,
+as a backstop, not the only gate.
+Why: D-002's reasoning held for a session-end instruction, not for an actual hook: Stop
+fires reliably on a normal turn end and can block with `exit 2`, and PreCompact protects
+against the case D-002 couldn't address at all — losing the record when context compacts.
+Making git optional was also agreed: this is an agent memory/logging system, not a
+git-dependent workflow tool.
 

@@ -9,16 +9,20 @@ no writes, no confirmation prompts. Every step below says what `--check` does di
 
 ## 0. Refuse on an unmerged tree
 
-If the repo is mid-rebase or mid-merge (`git status` shows unmerged paths), stop and say so
-— `git diff`/`git log` are misleading in that state. Staged and unstaged changes otherwise
-are fine; there's no need for a clean tree here.
+If `.git` exists and is mid-rebase or mid-merge (`git status` shows unmerged paths), stop
+and say so — `git diff`/`git log` are misleading in that state. Staged and unstaged changes
+otherwise are fine; there's no need for a clean tree here. No `.git` at all: skip this step.
 
 ## 1. Collect changed facts
 
+If `.git` exists:
 - `git diff` (working tree + staged) for what changed.
 - `git log` since the date of the log's last entry, capped at 30 days (use whichever is more
   recent/smaller). If the gap is large, that's not a maintain-sized job — say "run
   `/repo-clean reorganize`" instead and stop.
+
+No `.git`: use the Stop hook's per-session changed-file list (see Hooks in `SKILL.md`) plus
+what this conversation actually did — there's no history to diff against.
 
 ## 2. Route each fact via the table, to exactly one owner
 
@@ -72,8 +76,8 @@ The checker verifies shape. These need reading, and belong in both modes — in 
 raise them with the user, in `--check` mode just list them:
 
 - Topics discussed in the repo (issues, comments, commit messages) with no routing-table row.
-- A fact restated in 2+ living docs in different words. The checker catches literal
-  restatement of code constants; paraphrased duplication it cannot see.
+- A fact restated in 2+ living docs in different words, or a doc restating a code constant.
+  The checker cannot compare docs to code or to each other for meaning — only structure.
 - A log's last `State:` line that looks stale against recent `git log` activity.
 - A research doc whose `Date:` is old relative to the code it describes.
 - An `open` decision whose `Revisit:` trigger has clearly already been met.

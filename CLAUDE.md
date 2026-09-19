@@ -30,5 +30,6 @@ document.
   other doc points to it — never repeats it.
 - If two docs assert the same fact differently, surface the contradiction — don't reconcile
   it silently.
-- `python scripts/tools/check_docs.py` must exit 0 before a commit lands;
-  `scripts/hooks/pre-commit` enforces it. If you edited `docs/`, commit before you stop.
+- `python scripts/tools/check_docs.py` must exit 0 before a commit lands; the Stop hook
+  enforces this every session, and `scripts/hooks/pre-commit` is a backstop where git
+  exists. If you edited `docs/`, commit before you stop.

@@ -39,8 +39,9 @@ particular repo):
   reconcile it silently.
 - A rule's text, a measured number, or a defect description lives in exactly one file. Every
   other doc points to it — never repeats the codes, numbers, or conditions themselves.
-- The checker must exit 0 before a commit lands; the pre-commit hook enforces it. If you
-  edited `docs/`, commit before you stop.
+- The checker must exit 0 before a commit lands; the Stop hook enforces this every session,
+  and the pre-commit hook is a backstop where git exists. If you edited `docs/`, commit
+  before you stop.
 
 **Ask** about these — they're repo-specific, so no generic wording will fit as-is:
 - Where scripts run from / what path literals are relative to.
@@ -77,8 +78,9 @@ document.
 
 <adapted rules from step 3>
 
-`python scripts/tools/check_docs.py` must exit 0 before a commit lands;
-`scripts/hooks/pre-commit` enforces it. If you edited `docs/`, commit before you stop.
+`python scripts/tools/check_docs.py` must exit 0 before a commit lands; the Stop hook
+enforces this every session, and `scripts/hooks/pre-commit` is a backstop where git exists.
+If you edited `docs/`, commit before you stop.
 ```
 
 **`docs/DECISIONS.md`**:
@@ -153,12 +155,13 @@ Do not move or touch any pre-existing markdown/html outside what you just scaffo
 
 ## 7. Install the checker
 
-1. Copy `<skill>/scripts/check_docs.py` → `scripts/tools/check_docs.py` and
-   `<skill>/scripts/pre-commit` → `scripts/hooks/pre-commit`. If the repo already uses
-   `bin/` or `.githooks/` (or another convention) for scripts/hooks, adapt the install paths
-   to match, or ask.
-2. `git config core.hooksPath scripts/hooks` — if `core.hooksPath` is already set to
-   something else, warn and ask rather than overriding it.
+1. Copy `<skill>/scripts/check_docs.py` → `scripts/tools/check_docs.py`. Git is optional:
+   the Stop hook (see Hooks in `SKILL.md`) is the primary enforcement and needs no git.
+2. If `.git` exists: also copy `<skill>/scripts/pre-commit` → `scripts/hooks/pre-commit`,
+   `chmod +x` it (`git update-index --chmod=+x scripts/hooks/pre-commit` if `chmod` isn't
+   available), and `git config core.hooksPath scripts/hooks` — if `core.hooksPath` is
+   already set to something else, warn and ask rather than overriding it. Skip this step
+   entirely when there is no `.git`.
 3. If no `check_docs_local.py` exists: run `--init-config`, then trim the starter down to
    only the CONFIG keys actually different from the core defaults.
 4. Run `python scripts/tools/check_docs.py` and fix findings until it exits 0.

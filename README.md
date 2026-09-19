@@ -2,8 +2,9 @@
 
 A Claude Code plugin that keeps a repo's docs from rotting: one question, one
 authoritative file, tracked in a CLAUDE.md routing table, a `D-NNN` decision
-register, an append-only work log, and a stdlib checker gated by a git
-pre-commit hook.
+register, an append-only work log, and a stdlib checker. A Stop hook forces the
+log entry and a clean checker run every session that changed files; a git
+pre-commit hook is a backstop where git exists. No git required.
 
 ## Install
 
@@ -48,8 +49,9 @@ The checker verifies **shape**, not **content**. Exit 0 means your docs are
 well-formed — it does not mean they are right. Specifically, it cannot tell:
 
 - whether a fact was written to the file that actually owns it;
-- whether two docs state the same fact in different words (it catches literal
-  restatement of code constants, not paraphrase);
+- whether two docs (or a doc and the code) state the same fact in different
+  words — it checks structure, not meaning, so paraphrased duplication and
+  restated code constants both pass;
 - whether a doc's claims are still true, beyond what a stale `Date:` hints at.
 
 Those need reading, which is what `maintain --check` step 6 is for. Treat a
@@ -58,10 +60,12 @@ that looks more authoritative than it is does more harm than no checker.
 
 ## What gets installed into your repo
 
-`init` (or `maintain`/`reorganize` afterward) copies `skills/repo-clean/scripts/check_docs.py`
-to `scripts/tools/check_docs.py` and `skills/repo-clean/scripts/pre-commit` to
-`scripts/hooks/pre-commit`, then runs `git config core.hooksPath scripts/hooks`.
-Re-syncing the checker core later is `cp <skill>/scripts/check_docs.py
+`init` copies `skills/repo-clean/scripts/check_docs.py` to
+`scripts/tools/check_docs.py`. If the repo has `.git`, it also copies
+`skills/repo-clean/scripts/pre-commit` to `scripts/hooks/pre-commit` and runs
+`git config core.hooksPath scripts/hooks`. `maintain`/`reorganize` never
+install anything — `maintain` step 7 only reports version drift and prints the
+re-sync command. Re-syncing the checker core is `cp <skill>/scripts/check_docs.py
 scripts/tools/check_docs.py` — it never touches your `check_docs_local.py`.
 
 You can also run the checker directly, without a session:

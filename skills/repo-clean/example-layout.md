@@ -52,7 +52,7 @@ is symmetric — if A names B in `Superseded-by`, B names A in `Supersedes`.
 Decisions: D-041 (new: six defects fixed, backtest rerun)
 Docs: docs/DECISIONS.md, docs/research/backtest.md, docs/research/prediction_model.md,
 docs/research/dispatch_planner.md
-State: Region 1 fully migrated and cut over (2026-09-13 (1)); model/planner Phase 1 defects
+State: Region 1 fully migrated and cut over (2026-09-13, this period's first entry); model/planner Phase 1 defects
 fixed and validated, backtest at +10.57 on-time pct/wk (paired vs pre-fix +3.75 ns / +3.02
 mean10, 2.3 SE); Monday ingest/report not yet run; open before Region 2: surge-mode capacity
 caps (D-035 follow-up 2), D-037's route_runs.parquet design (adopted, not yet coded), D-040's
