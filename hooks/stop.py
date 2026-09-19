@@ -2,7 +2,12 @@
 """Stop hook: force the session's log entry to exist and the checker to pass before
 Claude goes quiet, when it changed files this session. Exit 0 = let it stop. Exit 2 =
 block, with the reason printed for Claude to act on. Reading or answering without
-editing anything writes nothing and never blocks."""
+editing anything writes nothing and never blocks.
+
+Retries are capped: after MAX_RETRIES straight blocks with no progress (e.g. a finding
+Claude can't fix, like a missing decisions file), the hook fails open with a warning
+instead of wedging the session shut forever.
+"""
 import json
 import sys
 from pathlib import Path
@@ -12,6 +17,8 @@ from _lib import (
     entry_has_placeholder, entry_line_no, ensure_entry, latest_log_file,
     load_session, run_checker, save_session,
 )
+
+MAX_RETRIES = 3
 
 
 def main():
@@ -34,24 +41,44 @@ def main():
     if files:
         ensure_entry(cwd, session, files)
         session["files"] = []
+        session["retries"] = 0  # new edits are progress; reset the retry budget
     session["pending"] = True
-    save_session(session_id, session)
 
     findings = run_checker(cwd)
-    findings_msg = f"\n{findings[1].strip()}" if findings and findings[0] != 0 else ""
+    checker_clean = not (findings and findings[0] != 0)
+    placeholder = entry_has_placeholder(log, session)
 
-    if not entry_has_placeholder(log, session) and not findings_msg:
+    if not placeholder and checker_clean:
         session["pending"] = False
+        session["retries"] = 0
         save_session(session_id, session)
         return 0
 
+    reasons = []
+    if placeholder:
+        reasons.append('the headline and/or State: sentence are still "TBD"')
+    if not checker_clean:
+        reasons.append(f"the checker found issues:\n{findings[1].strip()}")
+    reason_text = "; ".join(reasons)
+
     rel = log.relative_to(cwd)
     line_no = entry_line_no(log, session)
-    print(
-        f"Entry ready at {rel} line {line_no}. Fill in the headline and one State: sentence."
-        f"{findings_msg}",
-        file=sys.stderr,
-    )
+    retries = session.get("retries", 0) + 1
+    session["retries"] = retries
+    save_session(session_id, session)
+
+    if retries > MAX_RETRIES:
+        print(
+            f"repo-clean: giving up after {MAX_RETRIES} tries, letting the session stop "
+            f"anyway. {rel} line {line_no} still needs a human look: {reason_text}",
+            file=sys.stderr,
+        )
+        session["pending"] = False
+        session["retries"] = 0
+        save_session(session_id, session)
+        return 0
+
+    print(f"Entry at {rel} line {line_no} is not ready: {reason_text}", file=sys.stderr)
     return 2
 
 

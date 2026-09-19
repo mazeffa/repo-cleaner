@@ -92,10 +92,11 @@ instead of relying on the model to remember it:
   changed, keyed to this session. No output, no cost — bookkeeping only.
 - **Stop.** If this session changed files, it does the log work itself: creates or updates
   this session's entry (heading, `Decisions:`, `Docs:`), moves `State:` onto it, and runs
-  the checker — then blocks with one short message telling Claude to fill in the headline
-  and a `State:` sentence, plus any checker findings. It keeps blocking on retry until both
-  are done. A reply that only reads or answers, touching no files, is silent and never
-  blocks.
+  the checker — then blocks, naming exactly what's unresolved (an unfilled headline/`State:`,
+  a checker finding, or both). It keeps blocking on retry until fixed, but only for three
+  tries — after that it fails open with a warning rather than wedging the session shut over
+  something Claude can't fix (e.g. a finding that needs a human decision). A reply that only
+  reads or answers, touching no files, is silent and never blocks.
 - **PreCompact.** Folds any pending edits into the log entry before context is lost, so a
   compaction never drops the record of what changed. Non-blocking — compaction can't be
   refused, this just leaves something to resume from.

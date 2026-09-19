@@ -5,6 +5,7 @@ so it works the same whether or not the repo has git.
 import json
 import re
 import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -34,6 +35,13 @@ def save_session(session_id, data):
 
 
 def add_file(session_id, file_path):
+    # ponytail: hardcoded default log dir, not read from a repo's check_docs_local.py
+    # CONFIG override - hooks don't load that config. Without this, ensure_entry's own
+    # write to docs/log/*.md gets recorded as a "changed file", which the next Stop
+    # folds into the same entry's Docs: line, which is itself a file change... a
+    # self-feeding loop that never needs a real edit to keep triggering.
+    if file_path.startswith("docs/log/"):
+        return
     session = load_session(session_id)
     files = session.get("files", [])
     if file_path not in files:
@@ -56,7 +64,7 @@ def run_checker(root):
     if p is None:
         return None
     out = subprocess.run(
-        ["python", str(p), "--root", str(root)],
+        [sys.executable, str(p), "--root", str(root)],
         capture_output=True, text=True, encoding="utf-8",
     )
     return out.returncode, out.stdout
@@ -73,6 +81,19 @@ def latest_log_file(root):
 FIELD_START_RE = re.compile(r"^[A-Z][\w-]*:")
 
 
+def _field_span(lines, i):
+    """Index range [i, j) covered by the field starting at lines[i], including any
+    wrapped continuation lines - a continuation is a non-blank line that doesn't itself
+    start a field or a heading."""
+    j = i + 1
+    while j < len(lines):
+        cont = lines[j]
+        if not cont.strip() or FIELD_START_RE.match(cont) or cont.startswith("#"):
+            break
+        j += 1
+    return i, j
+
+
 def last_state_line(root):
     """The last State: field, joined with any wrapped continuation lines."""
     log = latest_log_file(root)
@@ -84,19 +105,18 @@ def last_state_line(root):
         for i, line in enumerate(lines):
             if not STATE_RE.match(line):
                 continue
-            parts = [line]
-            for cont in lines[i + 1:]:
-                if not cont.strip() or FIELD_START_RE.match(cont) or cont.startswith("#"):
-                    break
-                parts.append(cont)
-            state = " ".join(parts)
+            start, end = _field_span(lines, i)
+            state = " ".join(lines[start:end])
     return state
 
 
 def _strip_last_state(lines):
+    """Remove the last State: field and all of its wrapped continuation lines - leaving
+    only the first line behind orphans prose with no State: prefix in the entry body."""
     for i in range(len(lines) - 1, -1, -1):
         if STATE_RE.match(lines[i]):
-            del lines[i]
+            start, end = _field_span(lines, i)
+            del lines[start:end]
             break
     return lines
 
