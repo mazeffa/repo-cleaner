@@ -2,16 +2,15 @@
 """PreCompact hook: fold any pending session edits into the log entry before context is
 lost, so a compaction never drops the record of what changed. Non-blocking - compaction
 can't be refused, this just makes sure there's something to resume from."""
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _lib import ensure_entry, load_session, save_session
+from _lib import ensure_entry, load_session, read_stdin_json, save_session
 
 
 def main():
-    data = json.load(sys.stdin)
+    data = read_stdin_json()
     session_id = data.get("session_id")
     cwd = Path(data.get("cwd") or ".").resolve()
     if not session_id:

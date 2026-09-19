@@ -3,13 +3,29 @@ Stdlib only. Session state lives outside the repo (per-session, keyed by session
 so it works the same whether or not the repo has git.
 """
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
-DATA_DIR = Path.home() / ".claude" / "repo-clean" / "sessions"
+BASE_DIR = Path(os.environ.get("REPO_CLEAN_HOME") or (Path.home() / ".claude" / "repo-clean"))
+DATA_DIR = BASE_DIR / "sessions"
+
+
+def normalize_cwd(cwd):
+    return os.path.normcase(os.path.realpath(str(cwd)))
+
+
+def read_stdin_json():
+    """Malformed or empty stdin is never a reason to block or crash - treat it as no
+    data (missing session_id/cwd/tool_input), same as a payload without those keys."""
+    try:
+        return json.load(sys.stdin)
+    except Exception:
+        return {}
 
 HEADING_RE = re.compile(r"^## (\d{4}-\d{2}-\d{2})(?: \((\d+)\))? [—-] .+$", re.M)
 STATE_RE = re.compile(r"^State:\s*(.*)$")
@@ -34,7 +50,7 @@ def save_session(session_id, data):
     _session_file(session_id).write_text(json.dumps(data), encoding="utf-8")
 
 
-def add_file(session_id, file_path):
+def add_file(session_id, file_path, cwd=None):
     # ponytail: hardcoded default log dir, not read from a repo's check_docs_local.py
     # CONFIG override - hooks don't load that config. Without this, ensure_entry's own
     # write to docs/log/*.md gets recorded as a "changed file", which the next Stop
@@ -47,6 +63,8 @@ def add_file(session_id, file_path):
     if file_path not in files:
         files.append(file_path)
     session["files"] = files
+    if cwd is not None:
+        session["cwd"] = normalize_cwd(cwd)
     save_session(session_id, session)
 
 
@@ -195,6 +213,60 @@ def entry_line_no(log, session):
         return "?"
     lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
     return lines.index(heading) + 1
+
+
+OFFERED_FILE = BASE_DIR / "offered.json"
+ORPHAN_AGE_SECONDS = 2 * 3600
+PRUNE_AGE_SECONDS = 7 * 24 * 3600
+
+
+def setup_already_offered(cwd):
+    """True if the setup nag has already fired for this cwd; records it either way."""
+    norm = normalize_cwd(cwd)
+    try:
+        offered = json.loads(OFFERED_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        offered = {}
+    seen = norm in offered
+    if not seen:
+        offered[norm] = True
+        OFFERED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        OFFERED_FILE.write_text(json.dumps(offered), encoding="utf-8")
+    return seen
+
+
+def carry_over_orphans(session_id, cwd):
+    """One pass over DATA_DIR: merge stale same-cwd orphans into this session, prune
+    anything old regardless of cwd. Returns the number of files carried over."""
+    norm = normalize_cwd(cwd)
+    this_file = _session_file(session_id)
+    now = time.time()
+    carried = 0
+    if not DATA_DIR.exists():
+        return 0
+    for f in DATA_DIR.glob("*.json"):
+        if f == this_file:
+            continue
+        try:
+            age = now - f.stat().st_mtime
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        is_orphan_candidate = data.get("files") or data.get("pending")
+        if data.get("cwd") == norm and is_orphan_candidate and age > ORPHAN_AGE_SECONDS:
+            session = load_session(session_id)
+            files = session.get("files", [])
+            for fp in data.get("files", []):
+                if fp not in files:
+                    files.append(fp)
+            session["files"] = files
+            session["cwd"] = norm
+            save_session(session_id, session)
+            carried += len(data.get("files", []))
+            f.unlink()
+        elif age > PRUNE_AGE_SECONDS:
+            f.unlink()
+    return carried
 
 
 def entry_has_placeholder(log, session):

@@ -8,21 +8,20 @@ Retries are capped: after MAX_RETRIES straight blocks with no progress (e.g. a f
 Claude can't fix, like a missing decisions file), the hook fails open with a warning
 instead of wedging the session shut forever.
 """
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _lib import (
     entry_has_placeholder, entry_line_no, ensure_entry, latest_log_file,
-    load_session, run_checker, save_session,
+    load_session, read_stdin_json, run_checker, save_session,
 )
 
 MAX_RETRIES = 3
 
 
 def main():
-    data = json.load(sys.stdin)
+    data = read_stdin_json()
     session_id = data.get("session_id")
     cwd = Path(data.get("cwd") or ".").resolve()
     if not session_id:
@@ -70,7 +69,8 @@ def main():
     if retries > MAX_RETRIES:
         print(
             f"repo-clean: giving up after {MAX_RETRIES} tries, letting the session stop "
-            f"anyway. {rel} line {line_no} still needs a human look: {reason_text}",
+            f"anyway (entry passed unverified). {rel} line {line_no} still needs a human "
+            f"look: {reason_text}",
             file=sys.stderr,
         )
         session["pending"] = False

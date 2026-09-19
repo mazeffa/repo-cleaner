@@ -105,6 +105,10 @@ Session state (which files changed, which entry belongs to this session) lives u
 `~/.claude/repo-clean/sessions/`, not in the repo, so this works identically with or
 without git.
 
+`hooks/selftest.py` drives all four hooks and the pre-commit gate against a scratch repo;
+it tests this plugin repo's own `hooks/`, not an installed plugin cache. Run it directly,
+or it runs automatically from `scripts/hooks/pre-commit` when that file is present.
+
 ## Checker
 
 `scripts/check_docs.py` is a stdlib-only, config-driven checker. Key flags:

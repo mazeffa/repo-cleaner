@@ -7,3 +7,4 @@ cd "$(git rev-parse --show-toplevel)"
 # python3 on most Unixes; bare python on Windows/conda where python3 may be absent.
 if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
 "$PY" scripts/tools/check_docs.py
+if [ -f hooks/selftest.py ]; then "$PY" hooks/selftest.py; fi
