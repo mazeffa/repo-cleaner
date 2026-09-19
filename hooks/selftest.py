@@ -114,10 +114,17 @@ def test_post_tool_use(base):
     sess = load_session(home, sid)
     check("post_tool_use: dedups", sess["files"] == ["README.md"], sess)
 
+    run_hook("post_tool_use.py",
+              {"session_id": sid, "cwd": str(repo),
+               "tool_input": {"file_path": str(base / "elsewhere.md")}}, home)
+    sess = load_session(home, sid)
+    check("post_tool_use: ignores paths outside cwd", sess["files"] == ["README.md"], sess)
+
 
 def test_stop(base):
     repo = make_scratch_repo(base)
     home = base / "home2"
+    (repo / "scratch-only.md").write_text("x\n", encoding="utf-8")
 
     rc, out, err = run_hook("stop.py", {"session_id": "nosuch", "cwd": str(repo)}, home)
     check("stop: silent, no session record", rc == 0 and not out and not err)
@@ -126,7 +133,7 @@ def test_stop(base):
     rc, out, err = run_hook("stop.py", {"session_id": "clean", "cwd": str(repo)}, home)
     check("stop: silent when nothing changed", rc == 0 and not out and not err)
 
-    write_session(home, "s3", {"files": ["README.md"], "pending": False})
+    write_session(home, "s3", {"files": ["scratch-only.md"], "pending": False})
     rc, out, err = run_hook("stop.py", {"session_id": "s3", "cwd": str(repo)}, home)
     check("stop: blocks with TBD", rc == 2)
     check("stop: reason on stderr", "not ready" in err)
@@ -152,7 +159,8 @@ def test_stop(base):
     check("stop: second edit merges Docs:, no second heading",
           new_text.count("— fixed the thing") == 1 and "second.md" in new_text, rc)
 
-    write_session(home, "s4", {"files": ["README.md"], "pending": False})
+    (repo / "scratch-only-2.md").write_text("x\n", encoding="utf-8")
+    write_session(home, "s4", {"files": ["scratch-only-2.md"], "pending": False})
     for i in range(3):
         rc, out, err = run_hook("stop.py", {"session_id": "s4", "cwd": str(repo)}, home)
         check(f"stop: retry {i+1} blocks", rc == 2, err)
@@ -166,8 +174,9 @@ def test_stop_drift(base):
     home = base / "home_drift"
     checker = repo / "scripts" / "tools" / "check_docs.py"
     checker.write_text(checker.read_text(encoding="utf-8") + "# drifted\n", encoding="utf-8")
+    (repo / "scratch-only.md").write_text("x\n", encoding="utf-8")
 
-    write_session(home, "d1", {"files": ["README.md"], "pending": False})
+    write_session(home, "d1", {"files": ["scratch-only.md"], "pending": False})
     rc, out, err = run_hook("stop.py", {"session_id": "d1", "cwd": str(repo)}, home)
     check("stop: drift note in block reason", "differs from the plugin's" in err, err)
     rc, out, err = run_hook("stop.py", {"session_id": "d1", "cwd": str(repo)}, home)
@@ -182,7 +191,7 @@ def test_stop_wrapped_state(base):
     today = __import__("datetime").date.today().isoformat()
     log.write_text(
         log.read_text(encoding="utf-8").rstrip("\n") + "\n\n"
-        f"## {today} — earlier entry\n\nDecisions: none\nDocs: README.md\n"
+        f"## {today} — earlier entry\n\nDecisions: none\nDocs: other.md\n"
         "State: line one\nwraps onto a second line here.\n",
         encoding="utf-8",
     )
@@ -193,16 +202,49 @@ def test_stop_wrapped_state(base):
           "wraps onto a second line here." not in text, text[-400:])
 
 
+def test_stop_adopts_entry(base):
+    repo = make_scratch_repo(base)
+    home = base / "home_adopt"
+    log = log_path(repo)
+    today = __import__("datetime").date.today().isoformat()
+    text = log.read_text(encoding="utf-8")
+    same_date = sum(1 for _ in __import__("re").finditer(
+        rf"^## {today}(?: \((\d+)\))? [—-] .+$", text, __import__("re").M))
+    n = same_date + 1 if same_date else None
+    heading = f"## {today}" + (f" ({n})" if n else "") + " — hand-written entry"
+    log.write_text(
+        text.rstrip("\n") + "\n\n" + heading +
+        "\n\nDecisions: none\nDocs: README.md\nState: something true.\n",
+        encoding="utf-8",
+    )
+
+    write_session(home, "adopt1", {"files": ["README.md", "CLAUDE.md"], "pending": False})
+    rc, out, err = run_hook("stop.py", {"session_id": "adopt1", "cwd": str(repo)}, home)
+    new_text = log.read_text(encoding="utf-8")
+    check("stop: adopts today's hand-written entry instead of stubbing",
+          rc == 0 and new_text.count(heading) == 1 and "CLAUDE.md" in new_text
+          and "— TBD" not in new_text, (rc, err, new_text[-300:]))
+    sess = load_session(home, "adopt1")
+    check("stop: session bound to adopted entry",
+          sess and sess.get("entry_date") == today and sess.get("entry_n") == n, sess)
+
+    home2 = base / "home_adopt2"
+    write_session(home2, "adopt2", {"files": ["unrelated.md"], "pending": False})
+    rc, out, err = run_hook("stop.py", {"session_id": "adopt2", "cwd": str(repo)}, home2)
+    text2 = log.read_text(encoding="utf-8")
+    check("stop: no-overlap same-day entry still gets a stub", rc == 2 and "— TBD" in text2, (rc, text2[-300:]))
+
+
 def test_precompact(base):
     repo = make_scratch_repo(base)
     home = base / "home3"
-    write_session(home, "p1", {"files": ["README.md"]})
+    write_session(home, "p1", {"files": ["scratch-only.md"]})
     rc, out, err = run_hook("pre_compact.py", {"session_id": "p1", "cwd": str(repo)}, home)
     check("precompact: exit 0", rc == 0)
     sess = load_session(home, "p1")
     check("precompact: pending true", sess["pending"] is True, sess)
     text = log_path(repo).read_text(encoding="utf-8")
-    check("precompact: creates entry", "Docs: README.md" in text, text[-200:])
+    check("precompact: creates entry", "Docs: scratch-only.md" in text, text[-200:])
 
     (repo / "second.md").write_text("x\n", encoding="utf-8")
     sess["files"] = ["second.md"]
@@ -308,6 +350,18 @@ def test_session_start_drift(base):
     check("session_start: no traceback on stderr", "Traceback" not in err, err)
 
 
+def test_session_start_unreadable_checker(base):
+    repo = make_scratch_repo(base)
+    checker = repo / "scripts" / "tools" / "check_docs.py"
+    checker.unlink()
+    checker.mkdir()  # exists() passes, read_bytes() raises OSError
+
+    home = base / "home_drift5"
+    rc, out, err = run_hook("session_start.py", {"session_id": "u5", "cwd": str(repo)}, home)
+    check("session_start: unreadable checker exits 0, no traceback",
+          rc == 0 and "Traceback" not in err, (rc, out, err))
+
+
 def test_bad_input(base):
     repo = make_scratch_repo(base)
     home = base / "home_bad"
@@ -344,10 +398,12 @@ def main():
         test_post_tool_use(base)
         test_stop(base)
         test_stop_wrapped_state(base)
+        test_stop_adopts_entry(base)
         test_stop_drift(base)
         test_precompact(base)
         test_session_start(base)
         test_session_start_drift(base)
+        test_session_start_unreadable_checker(base)
         test_bad_input(base)
         test_pre_commit(base)
 

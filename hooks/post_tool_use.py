@@ -17,7 +17,7 @@ def main():
         try:
             file_path = Path(file_path).resolve().relative_to(cwd).as_posix()
         except ValueError:
-            file_path = Path(file_path).as_posix()  # outside cwd; record as given
+            return 0
         add_file(session_id, file_path, cwd)
     return 0
 

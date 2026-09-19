@@ -12,7 +12,8 @@ repro below.
 
 `Status:` is `confirmed` (reproduced here), `reported` (found by the pass, not independently
 reproduced), or `fixed` (with the commit that closed it). All 22 from that pass are fixed,
-closed by commit `724dd50`. DEF-23, found later and by a different route, is fixed.
+closed by commit `724dd50`. DEF-23 through DEF-25, found later and by a different route, are
+fixed.
 
 ## Fixed 2026-09-19
 
@@ -256,4 +257,33 @@ outwaited by retrying Stop; if that turns out to be the complaint, revisit it th
 Remaining ideas from the original fix directions are improvements, not part of this
 defect: bumping `CONFIG_VERSION` when a rule change requires new target-doc structure and
 naming the responsible rule ids; offering the re-sync `cp` instead of just printing it.
+
+## Fixed 2026-09-19 (hook bookkeeping)
+
+### DEF-24 — PostToolUse records an out-of-repo path as given
+Status: fixed
+Found validating commit `5796ba8`: edits to a plan file outside the repo were folded into
+log entry (7)'s `Docs:` line and earlier produced a TBD stub pointing at that file.
+Was: `hooks/post_tool_use.py` caught the `ValueError` from `relative_to(cwd)` and recorded
+the path unresolved instead of dropping it, so any file edited outside the target repo
+ended up in that session's file list and then in the log.
+Fix: on `ValueError`, the hook returns without calling `add_file` — nothing outside the
+repo is recorded.
+
+### DEF-25 — Stop always stubs a new entry, even when today's entry already covers the session
+Status: fixed
+Found the same way: a session that wrote its own log entry (7) by hand and committed still
+got a duplicate stub at Stop — log entry (9), later filled in as a note instead of
+discarded.
+Was: `ensure_entry()` created a stub whenever the session had no `entry_date` bound, with no
+check for whether the log's last entry already covered this session's work.
+Fix: before stubbing, `ensure_entry()` checks the log's last entry: if its heading date is
+today and its `Docs:` set intersects the session's files, it adopts that entry (binds
+`entry_date`/`entry_n` to it, merges the new files into its `Docs:` line) instead of adding
+a stub. Only the last entry is considered, and only on file overlap, so a concurrent
+session's unrelated same-day entry is never adopted. Accepted trade: two same-day sessions
+that both touch a shared file (e.g. `README.md`) now merge silently into one entry, where
+before they produced a visible duplicate stub. The log grammar carries no session id, so
+there is no real discriminator; a merged `Docs:` line is preferred to a stub that has to be
+cleaned up by hand.
 

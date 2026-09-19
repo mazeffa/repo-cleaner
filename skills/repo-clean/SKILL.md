@@ -92,14 +92,17 @@ instead of relying on the model to remember it:
   It then prints the log's last `State:` line, so the session starts with the current
   picture instead of re-discovering it.
 - **PostToolUse** (`Edit`/`Write`/`MultiEdit`/`NotebookEdit`). Records which file just
-  changed, keyed to this session. No output, no cost — bookkeeping only.
+  changed **inside the repo**; paths outside it are ignored. Keyed to this session. No
+  output, no cost — bookkeeping only.
 - **Stop.** If this session changed files, it does the log work itself: creates or updates
   this session's entry (heading, `Decisions:`, `Docs:`), moves `State:` onto it, and runs
   the checker — then blocks, naming exactly what's unresolved (an unfilled headline/`State:`,
-  a checker finding, or both). It keeps blocking on retry until fixed, but only for three
-  tries — after that it fails open with a warning rather than wedging the session shut over
-  something Claude can't fix (e.g. a finding that needs a human decision). A reply that only
-  reads or answers, touching no files, is silent and never blocks.
+  a checker finding, or both). If the log's last entry is already dated today and lists one
+  of this session's files, it adopts that entry instead of adding a stub. It keeps blocking
+  on retry until fixed, but only for three tries — after that it fails open with a warning
+  rather than wedging the session shut over something Claude can't fix (e.g. a finding that
+  needs a human decision). A reply that only reads or answers, touching no files, is silent
+  and never blocks.
 - **PreCompact.** Folds any pending edits into the log entry before context is lost, so a
   compaction never drops the record of what changed. Non-blocking — compaction can't be
   refused, this just leaves something to resume from.

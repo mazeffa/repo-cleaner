@@ -119,8 +119,11 @@ def _drift_detail(cwd):
     if plugin_p is None or target_p is None:
         return None
 
-    plugin_src = plugin_p.read_bytes().replace(b"\r\n", b"\n")
-    target_src = target_p.read_bytes().replace(b"\r\n", b"\n")
+    try:
+        plugin_src = plugin_p.read_bytes().replace(b"\r\n", b"\n")
+        target_src = target_p.read_bytes().replace(b"\r\n", b"\n")
+    except OSError:
+        return None
     if plugin_src == target_src:
         return None
 
@@ -291,15 +294,40 @@ def ensure_entry(root, session, files):
     if heading:
         lines = _merge_docs_line(lines, heading, files)
     else:
-        same_date = sum(1 for m in HEADING_RE.finditer(text) if m.group(1) == today)
-        n = same_date + 1 if same_date else None
-        heading = f"## {today}" + (f" ({n})" if n else "") + " — TBD"
-        lines = _strip_last_state(lines)
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines += [heading, "", "Decisions: none", "Docs: " + ", ".join(sorted(set(files))),
-                  "State: TBD", ""]
-        session["entry_date"], session["entry_n"] = today, n
+        # ponytail: overlap of one file is the heuristic; tighten to superset if it
+        # ever adopts wrongly.
+        last_match = None
+        for m in HEADING_RE.finditer(text):
+            last_match = m
+        adopted = False
+        if last_match and last_match.group(1) == today:
+            heading = last_match.group(0)
+            existing_docs = set()
+            idx = lines.index(heading)
+            for i in range(idx, len(lines)):
+                if lines[i].startswith("Docs:"):
+                    doc_start, doc_end = _field_span(lines, i)
+                    joined = " ".join(lines[doc_start:doc_end])
+                    existing_docs = {
+                        f.strip() for f in joined[len("Docs:"):].split(",") if f.strip()
+                    }
+                    break
+            if existing_docs & set(files):
+                lines = _merge_docs_line(lines, heading, files)
+                session["entry_date"], session["entry_n"] = (
+                    last_match.group(1), int(last_match.group(2)) if last_match.group(2) else None,
+                )
+                adopted = True
+        if not adopted:
+            same_date = sum(1 for m in HEADING_RE.finditer(text) if m.group(1) == today)
+            n = same_date + 1 if same_date else None
+            heading = f"## {today}" + (f" ({n})" if n else "") + " — TBD"
+            lines = _strip_last_state(lines)
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines += [heading, "", "Decisions: none", "Docs: " + ", ".join(sorted(set(files))),
+                      "State: TBD", ""]
+            session["entry_date"], session["entry_n"] = today, n
 
     log.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
     return log
