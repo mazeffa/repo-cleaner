@@ -12,22 +12,8 @@ repro below.
 
 `Status:` is `confirmed` (reproduced here), `reported` (found by the pass, not independently
 reproduced), or `fixed` (with the commit that closed it). All 22 from that pass are fixed,
-closed by commit `724dd50`. DEF-23 through DEF-26, found later and by a different route, are
-fixed; DEF-27 is confirmed and not yet fixed.
-
-## Confirmed, not fixed
-
-### DEF-27 — No rule against a `State:` line on a non-last log entry
-Status: confirmed
-Found 2026-09-19 validating 0.4.x: this repo's own `docs/log/2026.md` carries a stale
-`State: v0.3.0. …` on an old entry (currently line 107) while the last entry has the live
-one, and the 0.4.0 checker exits 0 on its own repo. `diary-grammar` enforces only that the
-*last* entry has `State:`; nothing enforces the other half of the rule in `SKILL.md`
-Principles ("only the last entry carries a `State:` line"). Benign today only because
-`last_state_line()` and the SessionStart hook take the last match. Fix direction, not done
-here: a checker rule that flags `State:` on any entry but the last, and removing the stale
-line from this repo's log when that rule lands so the fix and its evidence ship together.
-`CORE_VERSION` bump at that point.
+closed by commit `724dd50`. DEF-23 through DEF-28, found later and by a different route, are
+fixed.
 
 ## Fixed 2026-09-19
 
@@ -202,6 +188,7 @@ Was: four shipped releases claimed `CORE_VERSION = "1.0.0"` with different code:
 | 0.3.1 | 1.2.0 | 12 | yes | 9bafef37 |
 | 0.3.2 | 1.2.0 | 12 | yes | dda3df32 |
 | 0.3.3 | 1.3.0 | 12 | yes | 6f7504ae |
+| 0.5.0 | 1.4.0 | 12 | yes | 05635045 |
 
 0.3.2 reproduced this defect's headline even after adding `core_digest()`: it and 0.3.1
 both print `CORE_VERSION 1.2.0` with different bytes (`9bafef37` vs `dda3df32`), and
@@ -322,3 +309,34 @@ Fix: `_lib.py` gains `_docs_field_index()`, used by both `_merge_docs_line()` an
 `ensure_entry()`'s adoption scan — it walks the entry (bounded to the next heading) and
 returns the *last* matching line, mirroring `parse_fields`' last-wins semantics instead of
 first-match.
+
+### DEF-28 — Drift message renders `None` for a checker with no parseable `CORE_VERSION`
+Status: fixed
+Found 2026-09-19 by black-box testing 0.4.1 with a stub checker. Was: `_drift_detail`
+interpolated the regex miss directly into the summary, rendering `target None+42f0e312`.
+Fix: `or '?'` on both sides of the summary string; direction was already `unknown` in this
+case and nothing crashed. Reachable only with a corrupted or foreign checker.
+
+## Fixed 2026-09-19 (checker gap)
+
+### DEF-27 — No rule against a `State:` line on a non-last log entry
+Status: fixed
+Found 2026-09-19 validating 0.4.x: this repo's own `docs/log/2026.md` carried a stale
+`State: v0.3.0. …` on an old entry while the last entry had the live one, and the 0.4.0
+checker exited 0 on its own repo. `diary-grammar` enforced only that the *last* entry has
+`State:`; nothing enforced the other half of the rule in `SKILL.md` Principles ("only the
+last entry carries a `State:` line"). Benign only because `last_state_line()` and the
+SessionStart hook take the last match.
+Fix: `check_diary_grammar` now checks `State:` placement once, globally, over every period
+file's entries concatenated in sorted-filename order — not per file — matching both
+`last_state_line()`'s scan and the `SKILL.md` principle: the log's last entry (across period
+files) must carry `State:`; every other entry must not. Consequence at period rollover: the
+old file's last entry must give up its `State:` line. Selfcheck gained a fire case (a
+non-last entry carrying `State:`) and a rollover fixture (two period files, `State:` moving
+off the older file's last entry once a newer file exists). The stale line was removed from
+this repo's own log in the same commit that landed the rule, so the fix ships with its
+evidence. `CORE_VERSION` bumped to 1.4.0. `CONFIG_VERSION` stays at 1: the new rule needs a
+target repo's own log to change (a doc edit, not new required structure), and a
+`CONFIG_VERSION` mismatch exits 2 for every target with a `check_docs_local.py` — the
+finding text already says what to fix. The idea of bumping it anyway stays parked in
+DEF-23's list.

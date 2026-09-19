@@ -193,7 +193,8 @@ def _drift_detail(cwd):
     else:
         direction = "same version, different bytes"
 
-    summary = f"target {target_version}+{target_digest}, plugin {plugin_version}+{plugin_digest}"
+    summary = (f"target {target_version or '?'}+{target_digest}, "
+               f"plugin {plugin_version or '?'}+{plugin_digest}")
     return summary, direction
 
 

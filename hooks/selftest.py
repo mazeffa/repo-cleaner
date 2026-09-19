@@ -8,6 +8,7 @@ isolated per test via REPO_CLEAN_HOME so this never touches a real user's data.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -214,6 +215,14 @@ def test_stop_adopts_entry(base):
         rf"^## {today}(?: \((\d+)\))? [—-] .+$", text, __import__("re").M))
     n = same_date + 1 if same_date else None
     heading = f"## {today}" + (f" ({n})" if n else "") + " — hand-written entry"
+    # DEF-27: only the log's last entry may carry State: - a hand-written new entry
+    # gives up the old one, same as a real editor would.
+    log_lines = text.splitlines()
+    for i in range(len(log_lines) - 1, -1, -1):
+        if log_lines[i].startswith("State:"):
+            del log_lines[i]
+            break
+    text = "\n".join(log_lines) + "\n"
     log.write_text(
         text.rstrip("\n") + "\n\n" + heading +
         "\n\nDocs: were reorganised in this session; see below.\n\n"
@@ -339,7 +348,7 @@ def test_session_start_drift(base):
     check("session_start: drift message suppressed on repeat", "Checker differs" not in out2, out2)
 
     checker.write_text(
-        checker.read_text(encoding="utf-8").replace('CORE_VERSION = "1.3.0"', 'CORE_VERSION = "0.9.0"'),
+        checker.read_text(encoding="utf-8").replace('CORE_VERSION = "1.4.0"', 'CORE_VERSION = "0.9.0"'),
         encoding="utf-8",
     )
     home = base / "home_drift3"
@@ -355,6 +364,16 @@ def test_session_start_drift(base):
     check("session_start: unknown direction exits 0", rc == 0, (out, err))
     check("session_start: unknown direction in message", "unknown" in out, out)
     check("session_start: no traceback on stderr", "Traceback" not in err, err)
+
+    checker.write_text(
+        re.sub(r'^CORE_VERSION = .*\n', '', checker.read_text(encoding="utf-8"), flags=re.M),
+        encoding="utf-8",
+    )
+    home = base / "home_drift4b"
+    rc, out, err = run_hook("session_start.py", {"session_id": "u4b", "cwd": str(repo)}, home)
+    check("session_start: no parseable CORE_VERSION doesn't render None", "None+" not in out, out)
+    check("session_start: no parseable CORE_VERSION renders ?", "?+" in out, out)
+    check("session_start: no parseable CORE_VERSION is unknown direction", "unknown" in out, out)
 
 
 def test_session_start_unreadable_checker(base):

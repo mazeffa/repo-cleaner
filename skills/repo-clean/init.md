@@ -24,7 +24,9 @@ From the list, derive:
   (`docs/DECISIONS.md`, `docs/log/<period>.md`, `docs/research/<subject>.md`) unless the
   repo already has a strong convention.
 - **Log period.** A season, a quarter, a year — whatever this repo's natural work cadence is.
-  Ask if it's not obvious.
+  Ask if it's not obvious. Period filenames must sort lexically in chronological order, one
+  consistent zero-padded shape (`2026.md`, `2026-Q1.md`, `2026-01.md`, never mixed) — the
+  checker takes the lexically last file's last entry as the log's last entry.
 
 ## 3. Rules to adapt into CLAUDE.md
 
@@ -116,9 +118,9 @@ Why: <one line — why this repo needed it>
 ```markdown
 > **Format for new entries** (append-only): `## YYYY-MM-DD [(N)] — headline`, `(N)` only
 > when more than one entry shares a date. Then `Decisions:` (D-NNN this entry touched, or
-> `none`) and `Docs:` (files changed), plus `State:` on this file's *last* entry only — one
-> line: what's true now, what's pending. Current state is always
-> `grep '^State:' docs/log/<period>.md | tail -1`.
+> `none`) and `Docs:` (files changed), plus `State:` on the log's last entry only, across
+> period files — one line: what's true now, what's pending. Current state is always
+> `grep -h '^State:' docs/log/*.md | tail -1`.
 
 # <period> log
 

@@ -23,7 +23,8 @@ and in output):
                          case-exactly regardless of OS; a trailing '/' requires a directory.
   banned-headers        No TODO/Next Steps/Future Work headers outside the decisions file.
   diary-grammar         Log heading grammar (including the (N) numbering convention),
-                         required fields, last entry needs State:.
+                         required fields, only the log's last entry, across period files,
+                         carries State:.
   archive-banner-paths  Archive disposition banner lines (blockquote lines only, wrapped
                          '>' lines joined) cite real, in-repo paths, searched recursively.
   open-questions-sync   Open-questions table <-> Status: open entries, Revisit: required.
@@ -56,7 +57,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CORE_VERSION = "1.3.0"  # bump on any content change; core_digest() catches what this misses
+CORE_VERSION = "1.4.0"  # bump on any content change; core_digest() catches what this misses
 CONFIG_VERSION = 1
 
 
@@ -483,6 +484,7 @@ def check_diary_grammar(ctx, errors, docs):
     log_dir = ctx.root / cfg["log_dir"]
     if not log_dir.exists():
         return
+    all_entries = []
     for log in sorted(log_dir.glob("*.md")):
         text = read_doc(log)
         lines = text.splitlines()
@@ -532,12 +534,18 @@ def check_diary_grammar(ctx, errors, docs):
                 errors.append(f"{log.name}: entry '{head}' missing a Decisions: line")
             if "Docs" not in fields:
                 errors.append(f"{log.name}: entry '{head}' missing a Docs: line")
-        if entries:
-            last_heading, last_body = entries[-1]
-            head = last_heading.strip()
-            last_fields = parse_fields(last_body)
-            if not last_fields.get("State", "").strip():
-                errors.append(f"{log.name}: last entry '{head}' missing a non-empty State: line")
+        all_entries.extend((log.name, h, b) for h, b in entries)
+
+    if all_entries:
+        name, heading, body = all_entries[-1]
+        if not parse_fields(body).get("State", "").strip():
+            errors.append(f"{name}: last entry '{heading.strip()}' missing a non-empty State: line")
+        for name, heading, body in all_entries[:-1]:
+            if parse_fields(body).get("State", "").strip():
+                errors.append(
+                    f"{name}: entry '{heading.strip()}' carries a State: line but is not the "
+                    "log's last entry - only the last entry holds current state; delete it"
+                )
 
 
 def check_archive_banner_paths(ctx, errors, docs):
@@ -1055,7 +1063,8 @@ def _selfcheck():
         "## TODO later\n\n"
         "### 2098-02-02 old-style heading after the first '##' heading\n\n"
         "## 2098-01-01 — duplicate date and no N\n"
-        "Docs: none\n\n"
+        "Docs: none\n"
+        "State: stale\n\n"
         "## 2098-01-03 bad grammar no dash\n"
         "Decisions: none\n\n"
         "## 2098-01-04 (1) \u2014 last entry missing state\n"
@@ -1096,6 +1105,7 @@ def _selfcheck():
     assert has("missing a Decisions:"), found
     assert has("missing a Docs:"), found
     assert has("missing a non-empty State:"), found
+    assert has("carries a State: line but is not"), found
     assert has("diary heading grammar violated"), found
     assert has("duplicate diary heading"), found
     assert has("'###' dated heading appears after"), found
@@ -1222,6 +1232,47 @@ def _selfcheck():
     run_generic_rules(ctx3, found3)
     run_local_check(mod3, ctx3, found3, found3)
     assert any("CONFIG_VERSION mismatch" in e for e in found3), found3
+
+    # DEF-27 rollover case: State: only on the log's last entry, across period files.
+    tmp4 = Path(tempfile.mkdtemp())
+    (tmp4 / "docs" / "log").mkdir(parents=True)
+    (tmp4 / "docs" / "archive").mkdir(parents=True)
+    (tmp4 / "docs" / "DECISIONS.md").write_text(
+        "## Open questions\n\n## Fields\n\n## D-001 — a\nStatus: active   Verdict: adopted\n",
+        encoding="utf-8",
+    )
+    (tmp4 / "CLAUDE.md").write_text("nothing to route\n", encoding="utf-8")
+    (tmp4 / "README.md").write_text("fine\n", encoding="utf-8")
+    (tmp4 / "docs" / "log" / "2097-01.md").write_text(
+        "## 2097-01-01 — first period, no state\n"
+        "Decisions: none\n"
+        "Docs: none\n",
+        encoding="utf-8",
+    )
+    (tmp4 / "docs" / "log" / "2097-02.md").write_text(
+        "## 2097-02-01 — second period, first entry\n"
+        "Decisions: none\n"
+        "Docs: none\n\n"
+        "## 2097-02-02 — second period, last entry\n"
+        "Decisions: none\n"
+        "Docs: none\n"
+        "State: current\n",
+        encoding="utf-8",
+    )
+    ctx4 = Ctx(tmp4, dict(CONFIG))
+    found4 = []
+    run_generic_rules(ctx4, found4)
+    assert not any("State:" in e for e in found4), found4
+
+    with (tmp4 / "docs" / "log" / "2097-01.md").open("a", encoding="utf-8") as f:
+        f.write("State: old\n")
+    found4b = []
+    run_generic_rules(ctx4, found4b)
+    state_hits = [e for e in found4b if "carries a State:" in e]
+    assert len(state_hits) == 1, found4b
+    assert "2097-01.md" in state_hits[0], found4b
+
+    shutil.rmtree(tmp4)
 
     # --- DEF-21: --root pointed at a file, exercised end to end through main() too.
     tmp_fd2, tmp_file2_name = tempfile.mkstemp()
