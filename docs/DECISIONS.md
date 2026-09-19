@@ -63,3 +63,12 @@ than a governance system.
 Why: The alternative design — humans author the question inventory, agents select from it
 rather than writing their own — is the only proposal that stops the agent being corrected
 from authoring the artifact used to check it. Untested either way.
+
+## D-007 — Log known defects in docs/DEFECTS.md
+Status: active   Verdict: adopted   Date: 2026-09-18
+Decision: A new routed file, `docs/DEFECTS.md`, owns "what is broken and its status".
+Why: An adversarial pass found 22 defects and there was no routing row that owned them, so
+they existed only in a chat transcript — the exact failure this system exists to prevent,
+in this repo. A README section was the alternative; rejected because the list churns as
+fixes land and 22 reproductions do not belong in an install guide.
+

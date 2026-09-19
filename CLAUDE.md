@@ -9,6 +9,7 @@ This repo uses its own system.
 |---|---|
 | What this is, how to install and run it, what the checker can't catch | `README.md` |
 | What we believe and why (D-NNN) | `docs/DECISIONS.md` |
+| What is broken and its status | `docs/DEFECTS.md` |
 | What happened, and current state | `docs/log/2026.md` — current state is that file's last entry's `State:` line: `grep '^State:' docs/log/2026.md \| tail -1` |
 | Routing logic, principles, vocabulary | `skills/repo-clean/SKILL.md` |
 | What each subcommand does | `skills/repo-clean/init.md`, `maintain.md`, `reorganize.md` |
