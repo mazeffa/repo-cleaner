@@ -258,9 +258,14 @@ is seen, but the Stop clause is ungated and repeats on every block for as long a
 stays un-synced — chosen so the nag can't be outwaited by retrying Stop; if that turns out
 to be the complaint, revisit it there.
 
-Remaining ideas from the original fix directions are improvements, not part of this
-defect: bumping `CONFIG_VERSION` when a rule change requires new target-doc structure and
-naming the responsible rule ids; offering the re-sync `cp` instead of just printing it.
+One remaining idea from the original fix directions, an improvement rather than part of
+this defect: bumping `CONFIG_VERSION` when a rule change requires new target-doc structure
+and naming the responsible rule ids, so a repo several releases behind is told "these are
+new rules" instead of meeting a wall of findings. A hard exit-2 mismatch is too blunt for
+that; the shape that works is a finding, not a block. Deferred to a decision entry when it
+is taken up. The other idea, offering the re-sync `cp` instead of printing it, was dropped
+2026-09-19: under D-010 the vendored copy no longer runs where the plugin is present, so
+keeping it fresh is low value.
 
 ## Fixed 2026-09-19 (hook bookkeeping)
 
