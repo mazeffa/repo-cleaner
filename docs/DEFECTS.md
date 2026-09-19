@@ -12,7 +12,7 @@ repro below.
 
 `Status:` is `confirmed` (reproduced here), `reported` (found by the pass, not independently
 reproduced), or `fixed` (with the commit that closed it). All 22 from that pass are fixed,
-closed by commit `724dd50`. DEF-23, found later and by a different route, is open.
+closed by commit `724dd50`. DEF-23, found later and by a different route, is fixed.
 
 ## Fixed 2026-09-19
 
@@ -167,14 +167,14 @@ case mismatch passed on a case-insensitive filesystem.
 Fix: `exists_exact()` walks path segments through `os.listdir()` (case-sensitive on Windows
 too); a trailing separator requires the final segment to be a real directory.
 
-## Open
+## Fixed 2026-09-19 (build identity)
 
 ### DEF-23 — `CORE_VERSION` does not identify a build, so drift detection cannot work
-Status: confirmed
+Status: fixed
 Found 2026-09-19 by a user comparing shipped releases in the plugin cache (path in the
 repro below) against a target repo's installed copy.
 
-Four shipped releases claim `CORE_VERSION = "1.0.0"` with different code:
+Was: four shipped releases claimed `CORE_VERSION = "1.0.0"` with different code:
 
 | release | CORE_VERSION | `check_*` rules | `check_research_fields` | md5 |
 |---|---|---|---|---|
@@ -222,13 +222,15 @@ diary-grammar change (now rejects `(1)` on the first entry of a date), the rest 
 `uv run python -m ops`, `outside_path_re` widened). Zero are doc regressions. The user sees
 a 44-finding wall and a blocked commit with nothing saying these are rule changes, not rot.
 
-Fix directions, by payoff: (1) derive identity from a digest of the file rather than a
-hand-maintained string, or at minimum bump `CORE_VERSION` on every content change — a
-`--version` printing a short digest next to the semver makes step 7 correct without
-discipline; (2) move drift detection into `session_start.py`, which already resolves
-`checker_path(cwd)` and is the one place that runs every session unasked; (3) bump
-`CONFIG_VERSION` when a rule change requires new structure in target docs, and have the core
-name the responsible rule ids when it fires on a repo whose `CONFIG_VERSION` is behind;
-(4) offer the re-sync instead of documenting it — the manual `cp` is buried in step 7 of one
-subcommand.
+Fix: `core_digest()` hashes the checker's own source (newlines normalized, so a CRLF
+checkout and an LF one agree) and `--version` now prints `CORE_VERSION 1.2.0+<8hex>
+(CONFIG_VERSION 1)`. `maintain.md` step 7 compares the full `--version` line, digest
+included, instead of the version strings alone, so two builds sharing a `CORE_VERSION` no
+longer compare equal. `CORE_VERSION` itself is no longer the identity mechanism, so it is
+not bumped for this fix.
+
+Remaining ideas from the original fix directions are improvements, not part of this defect:
+moving drift detection into `session_start.py` so it runs every session unasked; bumping
+`CONFIG_VERSION` when a rule change requires new target-doc structure and naming the
+responsible rule ids; offering the re-sync `cp` instead of just printing it.
 

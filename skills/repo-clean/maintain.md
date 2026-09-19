@@ -84,7 +84,8 @@ raise them with the user, in `--check` mode just list them:
 
 ## 7. Checker version drift
 
-Compare the target repo's `CORE_VERSION`/`CONFIG_VERSION`
-(`python scripts/tools/check_docs.py --version`) against the plugin's copy. If they differ,
-report "target CORE_VERSION X, plugin CORE_VERSION Y" and print the re-sync command:
-`cp <skill>/scripts/check_docs.py <repo>/scripts/tools/check_docs.py`.
+Compare the target repo's full `--version` line (`python scripts/tools/check_docs.py
+--version`), digest included, against the plugin's copy. If they differ, report "target
+X, plugin Y" and print the re-sync command:
+`cp <skill>/scripts/check_docs.py <repo>/scripts/tools/check_docs.py`. A target that prints
+no `+digest` predates this check and counts as drift.

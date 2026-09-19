@@ -48,6 +48,7 @@ Suppression, four layers:
   4. <!-- check-docs: ignore <rule-id> --> on a line   - suppresses one hit on that line.
 """
 import argparse
+import hashlib
 import importlib.util
 import os
 import re
@@ -57,6 +58,20 @@ from pathlib import Path
 
 CORE_VERSION = "1.2.0"
 CONFIG_VERSION = 1
+
+
+def core_digest():
+    """Short digest of this file's own source, identifying the build.
+
+    DEF-23: CORE_VERSION is hand-maintained and has stayed put across releases that
+    changed rules, so the version string alone cannot tell two builds apart. Newlines
+    are normalized so a CRLF checkout and an LF one digest the same.
+    """
+    try:
+        source = Path(__file__).read_bytes().replace(b"\r\n", b"\n")
+    except OSError:
+        return "unknown"
+    return hashlib.sha256(source).hexdigest()[:8]
 
 CONFIG = {
     "living_roots": ["CLAUDE.md", "README.md"],
@@ -804,7 +819,7 @@ def _build_arg_parser():
     parser.add_argument("--root", metavar="DIR", help="repo root to check (default: git toplevel, else cwd)")
     parser.add_argument("--selfcheck", action="store_true", help="run the built-in selfcheck and exit")
     parser.add_argument("--init-config", action="store_true", help="write a starter check_docs_local.py")
-    parser.add_argument("--version", action="store_true", help="print CORE_VERSION/CONFIG_VERSION and exit")
+    parser.add_argument("--version", action="store_true", help="print CORE_VERSION+digest/CONFIG_VERSION and exit")
     return parser
 
 
@@ -827,7 +842,7 @@ def _main(argv):
         return _selfcheck()
 
     if args.version:
-        print(f"CORE_VERSION {CORE_VERSION} (CONFIG_VERSION {CONFIG_VERSION})")
+        print(f"CORE_VERSION {CORE_VERSION}+{core_digest()} (CONFIG_VERSION {CONFIG_VERSION})")
         return 0
 
     root = _resolve_root(args.root)
@@ -897,6 +912,9 @@ def _selfcheck():
 
     args = _build_arg_parser().parse_args(["--root", "somewhere", "--selfcheck"])
     assert args.selfcheck, "DEF-19: --selfcheck must work anywhere in argv, not just first"
+
+    digest = core_digest()
+    assert len(digest) == 8 and digest != "unknown", f"DEF-23: core_digest must identify the build, got {digest!r}"
 
     assert "internal" in LOCAL_STARTER and "reported as a finding" not in LOCAL_STARTER, (
         "DEF-20: LOCAL_STARTER must not claim a CONFIG_VERSION mismatch is a finding"

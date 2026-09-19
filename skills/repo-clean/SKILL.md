@@ -120,7 +120,8 @@ or it runs automatically from `scripts/hooks/pre-commit` when that file is prese
   (`scripts/tools/` if the script isn't already installed there; refuses to overwrite an
   existing one).
 - `--root PATH` — repo root to check; defaults to `git rev-parse --show-toplevel`.
-- `--version` — prints `CORE_VERSION` and `CONFIG_VERSION`.
+- `--version` — prints `CORE_VERSION`, a short digest of the checker's own source, and
+  `CONFIG_VERSION`.
 
 Re-syncing the core to a target repo is a straight overwrite: `cp <skill>/scripts/check_docs.py
 <repo>/scripts/tools/check_docs.py`. It never touches `check_docs_local.py` — that file is
