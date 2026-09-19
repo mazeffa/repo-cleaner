@@ -39,8 +39,8 @@ particular repo):
   reconcile it silently.
 - A rule's text, a measured number, or a defect description lives in exactly one file. Every
   other doc points to it — never repeats the codes, numbers, or conditions themselves.
-- Before ending any session that edited `docs/`, run the checker; it must exit 0. The
-  pre-commit hook enforces the same check at commit time.
+- The checker must exit 0 before a commit lands; the pre-commit hook enforces it. If you
+  edited `docs/`, commit before you stop.
 
 **Ask** about these — they're repo-specific, so no generic wording will fit as-is:
 - Where scripts run from / what path literals are relative to.
@@ -77,8 +77,8 @@ document.
 
 <adapted rules from step 3>
 
-Before ending any session that edited `docs/`, run `python scripts/tools/check_docs.py`; it
-must exit 0. `scripts/hooks/pre-commit` enforces the same check at commit time.
+`python scripts/tools/check_docs.py` must exit 0 before a commit lands;
+`scripts/hooks/pre-commit` enforces it. If you edited `docs/`, commit before you stop.
 ```
 
 **`docs/DECISIONS.md`**:
@@ -126,6 +126,21 @@ Decisions: D-001
 Docs: CLAUDE.md, docs/DECISIONS.md
 State: Doc system scaffolded; checker installed and passing.
 ```
+
+**`docs/research/<subject>.md`** (only for subjects a routing row actually names):
+
+```markdown
+# <subject>
+Status: active   Date: <today>
+
+This file is authoritative for **<the subject's evidence>** — measurements, accuracy,
+observed behaviour. Rewrite in place; do not append corrections. The belief drawn from
+this evidence lives in `docs/DECISIONS.md`, not here.
+```
+
+`Status:` uses the same vocabulary as the decision register; `Date:` is when the content
+was last true, not when the file was touched. A `superseded` research doc must name what
+replaced it in `Superseded-by:`.
 
 Also create `docs/archive/` with a short `README.md` explaining the banner convention
 (`> **Archived YYYY-MM-DD.** <disposition>` — rationale, not instruction) so `reorganize` has

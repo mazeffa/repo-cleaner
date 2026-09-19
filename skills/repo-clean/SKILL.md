@@ -7,9 +7,9 @@ description: >
   current truth, and a stdlib checker gated by a git pre-commit hook. Use when
   the user says "set up docs", "log this", "where does this go", "update the
   decision", "supersede D-NNN", "reorganize the docs", "clean up the docs",
-  "consolidate the docs", "audit the docs", or when ending a session that
-  touched docs/. Subcommands: init, maintain, reorganize, audit.
-argument-hint: "init | maintain | reorganize | audit"
+  "consolidate the docs", or "audit the docs".
+  Subcommands: init, maintain (--check for a read-only report), reorganize.
+argument-hint: "init | maintain [--check] | reorganize"
 license: MIT
 ---
 
@@ -22,14 +22,13 @@ Look at the first token of `$ARGUMENTS`:
 - `init` → read `init.md`.
 - `maintain` → read `maintain.md`.
 - `reorganize` → read `reorganize.md`.
-- `audit` → read `audit.md`.
+- `audit` or `check` → read `maintain.md`, run it in `--check` mode.
 - No token → infer from context:
   - No routing table present anywhere in the repo (no "Where answers live" table, no
     `CLAUDE.md`) → offer `init`.
-  - "log this", "where does this go", or the session is ending and touched `docs/` →
-    `maintain`.
+  - "log this" or "where does this go" → `maintain`.
   - "reorganize", "consolidate", "clean up the docs" → `reorganize`.
-  - "audit", "check the docs" → `audit`.
+  - "audit", "check the docs" → `maintain --check`.
   - Still ambiguous → ask.
 
 Each subcommand file is one level deep under this skill's directory; read only the one you
@@ -37,7 +36,7 @@ need.
 
 ## Principles
 
-These hold across all four subcommands:
+These hold across all three subcommands:
 
 - One fact, one place. Every rule's text, every measured number, every defect description
   lives in exactly one file.
@@ -54,8 +53,8 @@ These hold across all four subcommands:
   only current truth. Never edit an old entry's prose to make it read as current.
 - Decisions supersede symmetrically: if A names B in `Superseded-by`, B names A in
   `Supersedes`.
-- Session-end gate: before ending any session that touched `docs/`, the checker must exit 0.
-  Never claim it passed without having run it.
+- The checker must exit 0 before you commit; the pre-commit hook enforces this. Never claim
+  it passed without having run it.
 
 ## Vocabulary
 
@@ -70,6 +69,12 @@ These hold across all four subcommands:
   carrying `State:`.
 - **Archive banner** — `> **Archived YYYY-MM-DD.** <disposition>` as the first line of a
   moved-not-deleted doc.
+- **Research doc** — `docs/research/<subject>.md`, the authority for a subject's *evidence*:
+  measurements, accuracy, how something actually behaves. Rewritten in place rather than
+  appended to, so it always reads as current, and carrying `Status:`/`Date:` because
+  nothing else reveals its age. Evidence goes here; the *belief* drawn from that evidence
+  is a `D-NNN` entry. One session usually produces both. Research docs are exempt from
+  routing coverage — the subject dir is routed, not each file.
 
 See `example-layout.md` for real excerpts of each of these. It is illustrative, not
 canonical — the inline skeletons in `init.md` are what `init` actually writes.

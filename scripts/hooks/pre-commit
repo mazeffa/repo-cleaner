@@ -1,0 +1,9 @@
+#!/bin/sh
+# Docs hygiene gate. Installed via `git config core.hooksPath scripts/hooks` (see README Setup).
+# Runs scripts/tools/check_docs.py from the repo root and blocks the commit on failure.
+# Bypass in an emergency with `git commit --no-verify`.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+# python3 on most Unixes; bare python on Windows/conda where python3 may be absent.
+if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
+"$PY" scripts/tools/check_docs.py
