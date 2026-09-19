@@ -11,8 +11,8 @@ rule *can* fire, and none proved a rule stays quiet when it should. The rebuilt 
 repro below.
 
 `Status:` is `confirmed` (reproduced here), `reported` (found by the pass, not independently
-reproduced), or `fixed` (with the commit that closed it). All 22 are now fixed, closed by
-commit `724dd50`.
+reproduced), or `fixed` (with the commit that closed it). All 22 from that pass are fixed,
+closed by commit `724dd50`. DEF-23, found later and by a different route, is open.
 
 ## Fixed 2026-09-19
 
@@ -166,3 +166,69 @@ Was: a backticked path ending in a separator was skipped, so a missing directory
 case mismatch passed on a case-insensitive filesystem.
 Fix: `exists_exact()` walks path segments through `os.listdir()` (case-sensitive on Windows
 too); a trailing separator requires the final segment to be a real directory.
+
+## Open
+
+### DEF-23 — `CORE_VERSION` does not identify a build, so drift detection cannot work
+Status: confirmed
+Found 2026-09-19 by a user comparing shipped releases in the plugin cache (path in the
+repro below) against a target repo's installed copy.
+
+Four shipped releases claim `CORE_VERSION = "1.0.0"` with different code:
+
+| release | CORE_VERSION | `check_*` rules | `check_research_fields` | md5 |
+|---|---|---|---|---|
+| 0.1.0 | 1.0.0 | 11 | no | a65648d4 |
+| 0.1.1 | 1.0.0 | 11 | no | cb62feb9 |
+| 0.1.2 | 1.0.0 | 11 | no | 3fb9b33f |
+| 0.2.0 | 1.0.0 | 12 | yes | ec77cd83 |
+| 0.2.2 | 1.1.0 | 12 | yes | — |
+| 0.3.0 | 1.2.0 | 12 | yes | 9bafef37 |
+| 0.3.1 | 1.2.0 | 12 | yes | 9bafef37 |
+
+0.1.2 → 0.2.0 added a whole rule without bumping the version; the other three 1.0.0 builds
+differ byte-for-byte. A target repo (core copied in 2026-09-18) is a fifth distinct
+"1.0.0" — 11 rules, md5 295453c9, matching none of the four.
+
+Repro:
+
+```
+cd ~/.claude/plugins/cache/repo-clean/repo-clean
+for v in 0.1.2 0.2.0; do
+  f="$v/skills/repo-clean/scripts/check_docs.py"
+  echo "$v $(grep -m1 'CORE_VERSION *=' $f) rules=$(grep -cE '^def check_' $f)"
+done
+```
+
+What it breaks. `maintain.md` step 7 is the plugin's only drift detection and it compares
+version strings, so a repo on the 0.1.x core and one on the 0.2.0 core both read "1.0.0" and
+compare equal — step 7 reports in-sync with a whole rule missing. It is sound only across
+the 1.0.0→1.2.0 boundary, the case it was least needed for. Nothing else reads the version:
+`hooks/session_start.py:18` tests `checker_path(cwd) is None`, existence only, and
+`_lib.run_checker()` then runs whatever stale copy it finds, with `scripts/hooks/pre-commit`
+enforcing it. A repo three releases behind keeps a green Stop hook and a green pre-commit
+gate; the only signal is prose that fires when a human types `/repo-clean maintain`.
+
+`CONFIG_VERSION` does not cover the gap either: it has been `1` from 0.1.0 through 0.3.1,
+including across `check_research_fields`, which requires `Status:`/`Date:` headers that
+target `docs/research/*.md` files did not previously need. Neither number tells a repo its
+docs now need structure they didn't need before.
+
+Effect on re-sync, measured on one unchanged target repo: core 1.0.0 exits 0, core 1.2.0
+reports 44 findings — 14 from the added research-fields rule, 4 from the DEF-18
+diary-grammar change (now rejects `(1)` on the first entry of a date), the rest from changed
+`CONFIG` defaults (`exempt_dirs` dropped that repo's council directory,
+`path_suppressed_prefixes` dropped `data/ops/`, `path_cmd_prefixes` dropped `Rscript ` and
+`uv run python -m ops`, `outside_path_re` widened). Zero are doc regressions. The user sees
+a 44-finding wall and a blocked commit with nothing saying these are rule changes, not rot.
+
+Fix directions, by payoff: (1) derive identity from a digest of the file rather than a
+hand-maintained string, or at minimum bump `CORE_VERSION` on every content change — a
+`--version` printing a short digest next to the semver makes step 7 correct without
+discipline; (2) move drift detection into `session_start.py`, which already resolves
+`checker_path(cwd)` and is the one place that runs every session unasked; (3) bump
+`CONFIG_VERSION` when a rule change requires new structure in target docs, and have the core
+name the responsible rule ids when it fires on a repo whose `CONFIG_VERSION` is behind;
+(4) offer the re-sync instead of documenting it — the manual `cp` is buried in step 7 of one
+subcommand.
+
