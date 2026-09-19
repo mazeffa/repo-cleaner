@@ -12,8 +12,22 @@ repro below.
 
 `Status:` is `confirmed` (reproduced here), `reported` (found by the pass, not independently
 reproduced), or `fixed` (with the commit that closed it). All 22 from that pass are fixed,
-closed by commit `724dd50`. DEF-23 through DEF-25, found later and by a different route, are
-fixed.
+closed by commit `724dd50`. DEF-23 through DEF-26, found later and by a different route, are
+fixed; DEF-27 is confirmed and not yet fixed.
+
+## Confirmed, not fixed
+
+### DEF-27 — No rule against a `State:` line on a non-last log entry
+Status: confirmed
+Found 2026-09-19 validating 0.4.x: this repo's own `docs/log/2026.md` carries a stale
+`State: v0.3.0. …` on an old entry (currently line 107) while the last entry has the live
+one, and the 0.4.0 checker exits 0 on its own repo. `diary-grammar` enforces only that the
+*last* entry has `State:`; nothing enforces the other half of the rule in `SKILL.md`
+Principles ("only the last entry carries a `State:` line"). Benign today only because
+`last_state_line()` and the SessionStart hook take the last match. Fix direction, not done
+here: a checker rule that flags `State:` on any entry but the last, and removing the stale
+line from this repo's log when that rule lands so the fix and its evidence ship together.
+`CORE_VERSION` bump at that point.
 
 ## Fixed 2026-09-19
 

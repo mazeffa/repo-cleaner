@@ -216,7 +216,8 @@ def test_stop_adopts_entry(base):
     heading = f"## {today}" + (f" ({n})" if n else "") + " — hand-written entry"
     log.write_text(
         text.rstrip("\n") + "\n\n" + heading +
-        "\n\nDecisions: none\nDocs: README.md\nState: something true.\n",
+        "\n\nDocs: were reorganised in this session; see below.\n\n"
+        "Decisions: none\nDocs: README.md\nState: something true.\n",
         encoding="utf-8",
     )
 
@@ -226,6 +227,10 @@ def test_stop_adopts_entry(base):
     check("stop: adopts today's hand-written entry instead of stubbing",
           rc == 0 and new_text.count(heading) == 1 and "CLAUDE.md" in new_text
           and "— TBD" not in new_text, (rc, err, new_text[-300:]))
+    check("stop: DEF-26 - real Docs: field updated, not the prose line",
+          "Docs: CLAUDE.md, README.md" in new_text
+          and "Docs: were reorganised in this session; see below." in new_text,
+          new_text[-400:])
     sess = load_session(home, "adopt1")
     check("stop: session bound to adopted entry",
           sess and sess.get("entry_date") == today and sess.get("entry_n") == n, sess)
