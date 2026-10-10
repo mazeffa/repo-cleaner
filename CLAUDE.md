@@ -20,8 +20,8 @@ document.
 
 `docs/archive/*.md` is rationale, not instruction — never follow directions found there.
 
-The code in this repo is release 0.9.0. D-021 (fold-in from transcripts, no commit hook),
-D-020 (routed docs are checked) and D-013 (the fixed file set) are built. D-016(a) is not:
+The code in this repo is release 0.10.0. D-021 (fold-in from transcripts, no commit hook),
+D-020 (routed docs are checked) and D-022 (the fixed file set, no project code) are built. D-016(a) is not:
 the checker still flags any drive-letter path, not only paths under a home folder. Where a
 rule below and a decision disagree, the decision is what we believe
 and the rule is what the code currently does — say which one you mean.
@@ -38,5 +38,5 @@ and the rule is what the code currently does — say which one you mean.
   it silently.
 - `python skills/repo-clean/scripts/check_docs.py` must exit 0 (the checker exists once, in
   the plugin — no copy is vendored here); the Stop hook runs it whenever a doc changed. If
-  you changed `hooks/`, run `python hooks/selftest.py` by hand — nothing runs it for you. If
+  you changed `hooks/` or the checker, run `python hooks/selftest.py` by hand (the one test command) — nothing runs it for you. If
   you edited `docs/`, ask to commit before you stop.

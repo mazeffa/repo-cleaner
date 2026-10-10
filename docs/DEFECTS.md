@@ -14,7 +14,9 @@ repro below.
 reproduced), or `fixed` (with the commit that closed it). All 22 from that pass are fixed,
 closed by commit `724dd50`. DEF-23 through DEF-28, found later and by a different route, are
 fixed, and so are DEF-29 through DEF-35, closed by release 0.9.0 (DEF-31 through DEF-34 were
-found 2026-10-09 by fact-checking an explainer page; DEF-35 by a review of the 0.9.0 tree).
+found 2026-10-09 by fact-checking an explainer page; DEF-35 by a review of the 0.9.0 tree),
+and DEF-36 through DEF-50, closed by release 0.10.0 (found 2026-10-10 by an LLM council review
+of 0.9.0, each checked against the code in debates 1 and 2).
 
 ## Open
 
@@ -410,3 +412,80 @@ own log has one. The self-test hid it by forcing `PYTHONIOENCODING=utf-8`.
 Fix: both hooks switch stdout (and Stop, stderr) to UTF-8; the self-test no longer forces it
 and its test home carries a `→`. `run_checker` also decodes with `errors="replace"`, since a
 crashing checker writes in the console code page.
+
+## Fixed in 0.10.0 (no silent failures, one parser, fold-in that finishes)
+
+### DEF-36 — Fold-in read only the start of a long session
+Status: fixed
+Was: `fold.py read` printed every item of a transcript in one go, so a long session could not be read to its end.
+Fix: `read` pages at about 20,000 characters and ends a partial page with the exact `--from N` command; `done` refuses until every listed session was read to the end.
+
+### DEF-37 — Fold-in dropped the user's answers to questions and plan prompts
+Status: fixed
+Was: `extract` skipped every `tool_result`, so what the user chose in `AskUserQuestion` or `ExitPlanMode` never reached the log.
+Fix: `extract` keeps the result of those two tools as `[user answer]`; no other tool output is read.
+
+### DEF-38 — Sessions were written up twice
+Status: fixed
+Was: `read` printed a session's whole transcript every time, so a session that kept working after a fold-in had its earlier work folded again.
+Fix: `read` prints only entries newer than the record's `folded_stop`; an entry with no timestamp counts as new.
+
+### DEF-39 — Fold-in stopped for good on one unreadable transcript
+Status: fixed
+Was: `read TRANSCRIPT` exited 1 for a gone or unrecognizable file, and Claude was told to stop, so one expired transcript blocked every later session from being folded.
+Fix: `read HOME` reports `[session <id>: transcript gone / unreadable — detail lost]`, sets it read, and carries on; it exits 1 only when every listed session is lost. The log entry names them.
+
+### DEF-40 — `done` after a partial read marked everything folded
+Status: fixed
+Was: `done` took `id@float` arguments copied from `list`, so Claude could run it after reading one page and the unread rest was skipped for good.
+Fix: `done HOME` takes no ids, and refuses, naming the sessions, unless every listed session was read to the end.
+
+### DEF-41 — A checker that failed was recorded as clean
+Status: fixed
+Was: `run_checker` returned `None` for a missing checker and Stop treated that as exit 0 and cleared `dirty`.
+Fix: `run_checker` always returns `(code, text)`; a missing checker is `(2, ...)`. Only exit 0 clears `dirty`.
+
+### DEF-42 — A checker timeout or internal error blocked the session
+Status: fixed
+Was: A timeout returned exit 1, which Stop reported as a doc finding, so Claude was told to fix docs that were fine.
+Fix: A timeout is `(124, ...)`. Exit 2 and 124 block nothing, leave the home marked for the next Stop, and SessionStart prints them.
+
+### DEF-43 — A doc changed by a command or another window was never checked
+Status: fixed
+Was: Only the Edit/Write hook set `dirty`, so a doc changed by `sed`, a script, `git pull` or another window was never checked at Stop.
+Fix: Stop also runs the checker when any doc the checker itself reads (including the log) is newer than the record's `checked_at`. If the hook cannot tell, it runs the check.
+
+### DEF-44 — SessionStart and the checker read the log differently
+Status: fixed
+Was: The hooks had their own `State:`/`Next:` parser; a `State:` inside a code fence, or `State: a  Next: b` on one line, gave a different answer from the checker's.
+Fix: `check_docs.current_fields` is the one reader of the log's last entry; SessionStart and `check_diary_grammar` both use it, and the hooks' parser is deleted.
+
+### DEF-45 — No version shown, though README said one was
+Status: fixed
+Was: No hook printed the plugin's version, so a months-old install ran unnoticed (this machine ran 0.5.0).
+Fix: SessionStart prints `repo-clean <version>` from `plugin.json`, or `version unknown (<error>)`.
+
+### DEF-46 — A crash could leave half a session record
+Status: fixed
+Was: `_write_json` wrote the record in place.
+Fix: It writes a temporary file in the same folder and `os.replace`s it.
+
+### DEF-47 — `reorganize` rolled back with `git reset --hard`
+Status: fixed
+Was: Rollback reset the whole tree to the recorded HEAD, erasing any unrelated uncommitted work.
+Fix: Rollback restores only the sources `reorganize` recorded (`git restore`, which keeps staged work), deletes only the destinations it created, and prints the commands left on any failure.
+
+### DEF-48 — The checker exited 0 when there was no project
+Status: fixed
+Was: With no `--root` and no home it checked the current folder, or printed "no repo-clean home" and exited 0 having checked nothing.
+Fix: With no `--root` it walks up to the nearest `.repo-clean`; no home, or a `--root` that is not one, exits 2.
+
+### DEF-49 — `banned-headers` skipped every `DECISIONS.md`
+Status: fixed
+Was: The rule skipped any file named like the register, while D-016(c) says a next-steps heading is invalid everywhere.
+Fix: The skip is gone; D-024 states the rule as "anywhere".
+
+### DEF-50 — Opening a project could run that project's Python
+Status: fixed
+Was: The hooks preferred a project's own `check_docs.py`, and the checker loaded `check_docs_local.py` from the project.
+Fix: Both are removed (D-022): the hooks and the checker only ever run the plugin's own checker.

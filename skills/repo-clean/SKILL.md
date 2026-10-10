@@ -8,9 +8,8 @@ description: >
   says "set up docs", "log this", "fold in", "the session is over", "where does
   this go", "update the decision", "supersede D-NNN", "reorganize the docs",
   "clean up the docs", "consolidate the docs", or "audit the docs".
-  Subcommands: init (--migrate for a pre-marker home), maintain (--check for a read-only
-  report), reorganize.
-argument-hint: "init [--migrate] | maintain [--check] | reorganize"
+  Subcommands: init, maintain (--check for a read-only report), reorganize.
+argument-hint: "init | maintain [--check] | reorganize"
 license: GPL-3.0-or-later
 ---
 
@@ -75,11 +74,11 @@ These hold across all three subcommands:
 - **Fold-in** — Claude reading earlier sessions' transcripts and writing what happened into
   the docs (`maintain.md`). The only act that writes the log (D-021).
 - **Archive banner** — `> **Archived YYYY-MM-DD.** <disposition>` as the first line of a
-  moved-not-deleted doc.
+  moved-not-deleted doc. A convention; the checker does not enforce it (D-024).
 - **Research doc** — `docs/research/<subject>.md`, the authority for a subject's *evidence*:
   measurements, accuracy, how something actually behaves. Rewritten in place rather than
   appended to, so it always reads as current, and carrying `Status:`/`Date:` because
-  nothing else reveals its age. Evidence goes here; the *belief* drawn from that evidence
+  nothing else reveals its age (a convention the checker does not enforce, D-024). Evidence goes here; the *belief* drawn from that evidence
   is a `D-NNN` entry. One session usually produces both. Research docs are exempt from
   routing coverage — the subject dir is routed, not each file.
 
@@ -92,48 +91,50 @@ Three hooks, shipped in `hooks/` and wired in `hooks/hooks.json`, record the wor
 the docs; none of them writes a doc (D-021):
 
 - **SessionStart.** Finds the **home** (D-018) by walking up from the working directory to
-  the nearest `.repo-clean` marker, or a pre-marker (legacy) folder with `CLAUDE.md` and
-  `docs/log/`; a legacy home gets a one-line `/repo-clean init --migrate` hint. It prints the
-  log's last `State:` and `Next:`, then any checker finding — raise those before other work.
-  On a fresh start (not resume, clear or compact), if earlier sessions in this home are not
-  yet folded in, it says how many and prints the `fold.py` path: run fold-in
-  (`maintain.md`) unless the user says not now. Opened above several homes, it prints one
-  line naming those with un-folded work, or the homes found if none has any; with no home
-  near, it points at `/repo-clean init` once.
-- **PostToolUse** (`Edit`/`Write`/`MultiEdit`/`NotebookEdit`). Records the changed file under
-  the home that file belongs to, resolved from the file's own path. No output.
+  the nearest `.repo-clean` marker (D-023). It prints the log's last `State:` and `Next:` —
+  read by the checker's own log parser, so the two never disagree — then `repo-clean <version>`
+  (the running plugin's version, so a stale install shows), then any checker problem: raise
+  those before other work. On a fresh start (not resume, clear or compact), if earlier
+  sessions in this home are not yet folded in, it says how many and prints the `fold.py`
+  command: run fold-in (`maintain.md`) unless the user says not now. Opened above several
+  homes, it prints one line naming those with un-folded work, or the homes found if none has
+  any; with no home near, it points at `/repo-clean init` once.
+- **PostToolUse** (`Edit`/`Write`/`MultiEdit`/`NotebookEdit`). Marks the home the changed file
+  belongs to, resolved from the file's own path, as touched, and its docs as changed if the
+  file is a `.md`. It does not record which file. No output.
 - **Stop.** Records the session (its transcript path and time) against every home it
-  touched, or the home it opened in if it edited nothing. If a `.md` in a touched home
-  changed, it runs the checker for that home and blocks on a finding, naming it. It blocks
-  once: while Claude is continuing because of the hook, it lets the session stop.
+  touched, or the home it opened in if it edited nothing. If a doc in a touched home changed
+  since the last check — by Claude's edit tool or by any other means (a script, a command,
+  another window, `git pull`) — it runs the checker for that home and blocks on a finding,
+  naming it. It blocks once: while Claude is continuing because of the hook, it lets the
+  session stop. A checker that crashes, is missing or times out is not a finding: nothing
+  blocks, the home stays marked, and the next SessionStart prints the problem.
+
+Each hook runs through `hooks/run.sh`, which finds a Python 3.8+ (`py -3`, `python`,
+`python3`); if there is none it says so instead of silently doing nothing. The hooks run the
+plugin's own checker, never code found in a project (D-022).
 
 The record lives under the user's `.claude/repo-clean/homes/`, not in the home, one file per
 home and session, kept until a fold-in covers it. Fold-in is triggered by words, not hooks:
 the user asks (`/repo-clean maintain`, "fold in"), the user says the session is over, or the
 session-start line above.
 
-`hooks/selftest.py` drives all three hooks and `fold.py` against scratch homes; it tests this
-plugin repo's own `hooks/`, not an installed plugin cache. Nothing runs it automatically —
-run it by hand after changing `hooks/`.
+`hooks/selftest.py` is the one test command: it drives all three hooks, `run.sh` and `fold.py`
+against scratch homes, and holds the checker's rule tests. It tests this plugin repo's own
+`hooks/`, not an installed plugin cache. Nothing runs it automatically — run it by hand after
+changing `hooks/` or the checker.
 
 ## Checker
 
-`scripts/check_docs.py` is a stdlib-only, config-driven checker. Key flags:
+`scripts/check_docs.py` is a stdlib-only, config-driven checker. One flag:
 
-- `--selfcheck` — runs the bundled fixture, asserts every rule fires, prints
-  `selfcheck ok, N findings` and exits 0. Use this to sanity-check the checker itself, not a
-  target repo.
-- `--init-config` — writes `check_docs_local.py` into the target repo's local-module dir
-  (`scripts/tools/` if the script isn't already installed there; refuses to overwrite an
-  existing one).
-- `--root PATH` — repo root to check; defaults to `git rev-parse --show-toplevel`.
-- `--version` — prints `CORE_VERSION`, a short digest of the checker's own source, and
-  `CONFIG_VERSION`.
+- `--root PATH` — the home to check. Default: the nearest `.repo-clean` marker at or above
+  the current folder. No marker there, or a `--root` that is not a home, exits 2 — nothing was
+  checked.
 
-The checker exists once, in the plugin (D-015) — no copy is vendored into a target repo, and
-there is nothing to re-sync. `check_docs_local.py` is the repo-specific extension point; it
-is optional everywhere and a production repo shouldn't have one without recording why in its
-own register (D-013).
+Exit 0 clean, 1 findings, 2 nothing could be checked. The checker exists once, in the plugin
+(D-015) — no copy is vendored into a target repo, and there is no per-project add-on: the
+checker never runs project code (D-022). Its rules are listed in its own docstring (D-024).
 
 ## Never
 

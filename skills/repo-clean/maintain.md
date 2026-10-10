@@ -25,24 +25,27 @@ otherwise are fine; there's no need for a clean tree here. No `.git` at all: ski
 `fold.py` sits in the plugin's `hooks/` folder, two levels above this skill's folder; the
 session-start line prints its full path.
 
-1. `python <plugin>/hooks/fold.py list <home>` lists the sessions not yet folded in, with
-   their transcript paths. When the user says the session is over, this session is in the
-   list too. It ends with the `done` line to run in step 7 — keep it.
-2. For each one, `python <plugin>/hooks/fold.py read <transcript>`. It prints only what the
-   user said, what Claude said, and which files were edited. Work from that. Open a tool's
-   output or a query result only when you need one specific fact that lives there, never in
-   bulk — query results can hold patient data.
-3. If `read` says it recognized nothing, stop and tell the user; don't fold an empty
-   session. If a transcript is gone (they expire, 30 days by default), record that the
-   session happened and its detail was lost — never guess what it did.
+1. `python <plugin>/hooks/fold.py list <home>` lists the sessions not yet folded in, and
+   remembers which it showed. When the user says the session is over, this session is in the
+   list too.
+2. `python <plugin>/hooks/fold.py read <home>` prints every listed session, oldest first: only
+   what the user said, what Claude said, which files were edited, and the user's answers to
+   questions and plan prompts — and only what is newer than that session's last fold-in. It
+   pages: while it ends with a `-- more:` line, run the `--from N` command that line gives.
+   Work from what it prints. Open a tool's output or a query result only when you need one
+   specific fact that lives there, never in bulk — query results can hold patient data.
+3. `read` reports a session whose transcript is gone (they expire, 30 days by default) or
+   unreadable as `detail lost` and goes on. Name each such session in the log entry as "this
+   session happened; its details were lost" — never guess what it did. If `read` exits 1,
+   every session was lost: tell the user, and don't invent an entry.
 4. If the sessions hold nothing beyond an earlier fold-in or idle reading, write no entry;
    go straight to step 7.
 
 `git diff` and `git log` may help confirm a fact, but the transcripts are the record — many
 homes share a repo, and git doesn't say which session did what.
 
-`--check`: run `list` and `read` and report where each fact would go (step 2); write nothing,
-and don't run `done`.
+`--check`: run `list --check` and `read` and report where each fact would go (step 2); write
+nothing, and don't run `done`.
 
 ## 2. Route each fact via the table, to exactly one owner
 
@@ -111,6 +114,7 @@ raise them with the user, in `--check` mode just list them:
 
 ## 7. Record the fold-in
 
-Run the `done` line that `list` printed. It marks exactly the sessions `list` showed, so a
-session that stopped during the fold-in still comes up next time, and this session doesn't.
-A session that keeps working afterwards comes up again. Skip in `--check` mode.
+Run `python <plugin>/hooks/fold.py done <home>`. It marks exactly the sessions `list` showed
+— and refuses until `read` has printed every one to the end — so a session that stopped during
+the fold-in still comes up next time, and this session doesn't. A session that keeps working
+afterwards comes up again. Skip in `--check` mode.

@@ -1,0 +1,486 @@
+{
+  "version": 2,
+  "debate_file": "debates/2-2026-10-10-repo-clean-plan-opus-sonnet.md",
+  "created_at": "2026-10-10T18:37:39.122874+00:00",
+  "host_provider": "claude",
+  "skip_provider": "",
+  "status": "running",
+  "planned_agents": [
+    {
+      "index": 1,
+      "name": "Opus",
+      "provider": "claude"
+    },
+    {
+      "index": 2,
+      "name": "Sonnet",
+      "provider": "claude"
+    },
+    {
+      "index": 3,
+      "name": "Fable",
+      "provider": "claude"
+    }
+  ],
+  "resolved_agents": [
+    {
+      "name": "Opus",
+      "provider": "claude",
+      "command": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--model",
+        "claude-opus-5-5",
+        "--effort",
+        "high"
+      ],
+      "prompt_transport": "stdin",
+      "metering": {
+        "mode": "required",
+        "format": "claude_json"
+      }
+    },
+    {
+      "name": "Sonnet",
+      "provider": "claude",
+      "command": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--model",
+        "claude-sonnet-5-5",
+        "--effort",
+        "high"
+      ],
+      "prompt_transport": "stdin",
+      "metering": {
+        "mode": "required",
+        "format": "claude_json"
+      }
+    },
+    {
+      "name": "Fable",
+      "provider": "claude",
+      "command": [
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--model",
+        "claude-fable-5-1",
+        "--effort",
+        "high"
+      ],
+      "prompt_transport": "stdin",
+      "metering": {
+        "mode": "required",
+        "format": "claude_json"
+      }
+    }
+  ],
+  "events": [
+    {
+      "timestamp": "2026-10-10T18:37:39.421961+00:00",
+      "type": "round_start",
+      "round": 1,
+      "agent_index": 0,
+      "status": "started",
+      "detail": "Round 1 started"
+    },
+    {
+      "timestamp": "2026-10-10T18:40:37.925728+00:00",
+      "type": "turn",
+      "round": 1,
+      "agent_index": 1,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A1-R1]"
+    },
+    {
+      "timestamp": "2026-10-10T18:44:38.874541+00:00",
+      "type": "turn",
+      "round": 1,
+      "agent_index": 2,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A2-R1]"
+    },
+    {
+      "timestamp": "2026-10-10T18:44:39.360996+00:00",
+      "type": "round_end",
+      "round": 1,
+      "agent_index": 0,
+      "status": "completed",
+      "detail": "R1: A1\u2705 A2\u2705"
+    },
+    {
+      "timestamp": "2026-10-10T18:44:39.481896+00:00",
+      "type": "round_start",
+      "round": 2,
+      "agent_index": 0,
+      "status": "started",
+      "detail": "Round 2 started"
+    },
+    {
+      "timestamp": "2026-10-10T18:49:35.538838+00:00",
+      "type": "turn",
+      "round": 2,
+      "agent_index": 1,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A1-R2]"
+    },
+    {
+      "timestamp": "2026-10-10T18:53:44.884669+00:00",
+      "type": "turn",
+      "round": 2,
+      "agent_index": 2,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A2-R2]"
+    },
+    {
+      "timestamp": "2026-10-10T18:53:45.299075+00:00",
+      "type": "round_end",
+      "round": 2,
+      "agent_index": 0,
+      "status": "completed",
+      "detail": "R2: A1\u2705 A2\u2705"
+    },
+    {
+      "timestamp": "2026-10-10T18:53:45.420123+00:00",
+      "type": "round_start",
+      "round": 3,
+      "agent_index": 0,
+      "status": "started",
+      "detail": "Round 3 started"
+    },
+    {
+      "timestamp": "2026-10-10T18:58:55.277757+00:00",
+      "type": "turn",
+      "round": 3,
+      "agent_index": 1,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A1-R3]"
+    },
+    {
+      "timestamp": "2026-10-10T19:02:44.381127+00:00",
+      "type": "turn",
+      "round": 3,
+      "agent_index": 2,
+      "status": "failed",
+      "detail": "Dropped earlier content: rewrote earlier tagged lines: [A2-R2]"
+    },
+    {
+      "timestamp": "2026-10-10T19:03:34.865223+00:00",
+      "type": "round_start",
+      "round": 4,
+      "agent_index": 0,
+      "status": "started",
+      "detail": "Round 4 started"
+    },
+    {
+      "timestamp": "2026-10-10T19:09:01.612003+00:00",
+      "type": "turn",
+      "round": 4,
+      "agent_index": 1,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A1-R4]"
+    },
+    {
+      "timestamp": "2026-10-10T19:13:10.549666+00:00",
+      "type": "turn",
+      "round": 4,
+      "agent_index": 2,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A2-R4]"
+    },
+    {
+      "timestamp": "2026-10-10T19:22:09.027334+00:00",
+      "type": "turn",
+      "round": 4,
+      "agent_index": 3,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A3-R4]"
+    },
+    {
+      "timestamp": "2026-10-10T19:22:10.503163+00:00",
+      "type": "round_end",
+      "round": 4,
+      "agent_index": 0,
+      "status": "completed",
+      "detail": "R4: A1\u2705 A2\u2705 A3\u2705"
+    },
+    {
+      "timestamp": "2026-10-10T19:22:11.598841+00:00",
+      "type": "round_start",
+      "round": 5,
+      "agent_index": 0,
+      "status": "started",
+      "detail": "Round 5 started"
+    },
+    {
+      "timestamp": "2026-10-10T19:27:43.077080+00:00",
+      "type": "turn",
+      "round": 5,
+      "agent_index": 1,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A1-R5]"
+    },
+    {
+      "timestamp": "2026-10-10T19:31:56.007944+00:00",
+      "type": "turn",
+      "round": 5,
+      "agent_index": 2,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A2-R5]"
+    },
+    {
+      "timestamp": "2026-10-10T19:31:57.076188+00:00",
+      "type": "round_end",
+      "round": 5,
+      "agent_index": 0,
+      "status": "completed",
+      "detail": "R5: A1\u2705 A2\u2705"
+    },
+    {
+      "timestamp": "2026-10-10T19:31:57.285658+00:00",
+      "type": "round_start",
+      "round": 6,
+      "agent_index": 0,
+      "status": "started",
+      "detail": "Round 6 started"
+    },
+    {
+      "timestamp": "2026-10-10T19:37:47.407752+00:00",
+      "type": "turn",
+      "round": 6,
+      "agent_index": 1,
+      "status": "completed_substantive",
+      "detail": "Applied changes with tag [A1-R6]"
+    },
+    {
+      "timestamp": "2026-10-10T19:38:36.268619+00:00",
+      "type": "round_start",
+      "round": 7,
+      "agent_index": 0,
+      "status": "started",
+      "detail": "Round 7 started"
+    }
+  ],
+  "attempts": [
+    {
+      "attempt_id": "R1-A1-debate-1",
+      "timestamp": "2026-10-10T18:40:37.751277+00:00",
+      "round": 1,
+      "phase": "debate",
+      "agent_index": 1,
+      "agent": "Opus",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 14,
+        "cached_input_tokens": 338367,
+        "output_tokens": 20804
+      },
+      "cost_usd": 0.8364954
+    },
+    {
+      "attempt_id": "R1-A2-debate-1",
+      "timestamp": "2026-10-10T18:44:38.722531+00:00",
+      "round": 1,
+      "phase": "debate",
+      "agent_index": 2,
+      "agent": "Sonnet",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 20,
+        "cached_input_tokens": 607224,
+        "output_tokens": 35736
+      },
+      "cost_usd": 0.7214807999999999
+    },
+    {
+      "attempt_id": "R2-A1-debate-1",
+      "timestamp": "2026-10-10T18:49:35.370895+00:00",
+      "round": 2,
+      "phase": "debate",
+      "agent_index": 1,
+      "agent": "Opus",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 22,
+        "cached_input_tokens": 713291,
+        "output_tokens": 36555
+      },
+      "cost_usd": 1.4059622
+    },
+    {
+      "attempt_id": "R2-A2-debate-1",
+      "timestamp": "2026-10-10T18:53:44.729023+00:00",
+      "round": 2,
+      "phase": "debate",
+      "agent_index": 2,
+      "agent": "Sonnet",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 14,
+        "cached_input_tokens": 445079,
+        "output_tokens": 42859
+      },
+      "cost_usd": 0.7795318
+    },
+    {
+      "attempt_id": "R3-A1-debate-1",
+      "timestamp": "2026-10-10T18:58:55.108602+00:00",
+      "round": 3,
+      "phase": "debate",
+      "agent_index": 1,
+      "agent": "Opus",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 14,
+        "cached_input_tokens": 474265,
+        "output_tokens": 41660
+      },
+      "cost_usd": 1.495147
+    },
+    {
+      "attempt_id": "R3-A2-debate-1",
+      "timestamp": "2026-10-10T19:02:44.245998+00:00",
+      "round": 3,
+      "phase": "debate",
+      "agent_index": 2,
+      "agent": "Sonnet",
+      "provider": "claude",
+      "status": "rejected",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 6,
+        "cached_input_tokens": 163287,
+        "output_tokens": 42412
+      },
+      "cost_usd": 0.7232734
+    },
+    {
+      "attempt_id": "R4-A1-debate-1",
+      "timestamp": "2026-10-10T19:09:01.470178+00:00",
+      "round": 4,
+      "phase": "debate",
+      "agent_index": 1,
+      "agent": "Opus",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 6,
+        "cached_input_tokens": 169363,
+        "output_tokens": 45545
+      },
+      "cost_usd": 1.4693396
+    },
+    {
+      "attempt_id": "R4-A2-debate-1",
+      "timestamp": "2026-10-10T19:13:10.368962+00:00",
+      "round": 4,
+      "phase": "debate",
+      "agent_index": 2,
+      "agent": "Sonnet",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 6,
+        "cached_input_tokens": 174083,
+        "output_tokens": 47086
+      },
+      "cost_usd": 0.7991006
+    },
+    {
+      "attempt_id": "R4-A3-debate-1",
+      "timestamp": "2026-10-10T19:22:08.853378+00:00",
+      "round": 4,
+      "phase": "debate",
+      "agent_index": 3,
+      "agent": "Fable",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 66,
+        "cached_input_tokens": 187408,
+        "output_tokens": 53577
+      },
+      "cost_usd": 4.114565
+    },
+    {
+      "attempt_id": "R5-A1-debate-1",
+      "timestamp": "2026-10-10T19:27:42.942603+00:00",
+      "round": 5,
+      "phase": "debate",
+      "agent_index": 1,
+      "agent": "Opus",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 4,
+        "cached_input_tokens": 100137,
+        "output_tokens": 48867
+      },
+      "cost_usd": 1.5659264
+    },
+    {
+      "attempt_id": "R5-A2-debate-1",
+      "timestamp": "2026-10-10T19:31:55.844679+00:00",
+      "round": 5,
+      "phase": "debate",
+      "agent_index": 2,
+      "agent": "Sonnet",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 4,
+        "cached_input_tokens": 101690,
+        "output_tokens": 50658
+      },
+      "cost_usd": 0.837316
+    },
+    {
+      "attempt_id": "R6-A1-debate-1",
+      "timestamp": "2026-10-10T19:37:47.257863+00:00",
+      "round": 6,
+      "phase": "debate",
+      "agent_index": 1,
+      "agent": "Opus",
+      "provider": "claude",
+      "status": "accepted",
+      "metering_status": "complete",
+      "usage": {
+        "input_tokens": 4,
+        "cached_input_tokens": 103411,
+        "output_tokens": 52367
+      },
+      "cost_usd": 1.6656612000000002
+    }
+  ],
+  "usage_totals": {
+    "input_tokens": 180,
+    "cached_input_tokens": 3577605,
+    "output_tokens": 518126
+  },
+  "total_cost_usd": 16.4137994,
+  "metering_complete": true,
+  "updated_at": "2026-10-10T19:22:10.648723+00:00",
+  "last_detail": "Host stopped R6 after Opus (Sonnet R6 killed); fixed review-note rule; resume at 7 with Fable + plan",
+  "current_round": 6
+}

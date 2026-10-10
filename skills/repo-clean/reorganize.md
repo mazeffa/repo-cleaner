@@ -12,8 +12,6 @@ Never commit, stash, stage, or change git settings (including `.gitignore`) at a
 Docs move with a plain file move (step 5), which git shows as a delete plus an untracked file
 until the user stages it.
 
-Record `HEAD` now — this is the rollback point for the whole run: `git rev-parse HEAD`.
-
 ## 2. Inventory
 
 Every `.md`/`.html` outside `docs/archive/`: path, question it answers, `mtime`, line count.
@@ -45,8 +43,12 @@ Once confirmed:
 Apply all of this as **one uncommitted working-tree change**. Leave the result for the user
 to review and commit themselves.
 
+As you go, record exactly what this run touched: each **source** it moved or rewrote, and each
+**destination** it created (including every new copy in `docs/archive/`). Step 7 undoes that
+list and nothing else.
+
 **On any move failure:** stop immediately. Report exactly what was applied so far, and
-print the rollback command (step 7). Do not continue past a failed move.
+print the rollback commands (step 7). Do not continue past a failed move.
 
 **On checker findings after all moves succeeded:** list them plainly. Offer the same
 rollback. Never auto-fix a finding here — that's a `maintain`-shaped decision, not a
@@ -55,13 +57,20 @@ mechanical one.
 ## 6. Untracked files are never moved
 
 Untracked files are inventoried in step 2 but this command never touches them — a clean-tree
-precondition can't account for something untracked, and `git reset --hard` won't
-restore a manual move of one. If an untracked file needs to move, tell the user and let them
+precondition can't account for something untracked, and a rollback can't restore a manual
+move of one. If an untracked file needs to move, tell the user and let them
 `git add` + move it themselves.
 
 ## 7. Rollback
 
-Always: `git reset --hard <the HEAD recorded in step 1>`. State this command explicitly
-whenever offering rollback — don't make the user look it up. It restores the moved docs but
-leaves their new copies in `docs/archive/` as untracked files; name those so the user can
-delete them.
+Undo only what step 5 recorded, in this order — never anything else in the tree, which holds
+the user's other work (a `git reset --hard` would wipe it, so this command never runs one):
+
+1. `git restore -- <each source it moved or rewrote>` — restores from the index, so changes
+   the user staged stay.
+2. Delete each destination it created, including the new copies in `docs/archive/`.
+3. If any command fails, stop and print the exact commands still left to run by hand.
+
+State these commands explicitly whenever offering rollback — don't make the user look them up.
+Restoring this command's own edits is not one of the git actions the rules above rule out
+(D-022).

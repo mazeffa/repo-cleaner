@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""PostToolUse hook (Edit|Write|MultiEdit|NotebookEdit): record which file changed, under
-the home that file belongs to - resolved from the file's own path, not the session's
-working directory, so a session opened above many homes still credits the right one.
-No output, no cost - the Stop hook does the rest."""
+"""PostToolUse hook (Edit|Write|MultiEdit|NotebookEdit): mark the home the edited file belongs
+to as touched (and its docs as changed, for a .md) - resolved from the file's own path, not
+the session's working directory, so a session opened above many homes still credits the right
+one. It does not record which file. No output, no cost - the Stop hook does the rest."""
 import sys
 from pathlib import Path
 
@@ -18,7 +18,7 @@ def main():
     if not session_id or not file_path:
         return 0
     path = Path(data.get("cwd") or ".", file_path).resolve()
-    home, _ = find_home(path.parent)
+    home = find_home(path.parent)
     if home is None:
         return 0
     add_file(session_id, home, path.relative_to(home).as_posix())

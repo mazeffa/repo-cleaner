@@ -7,16 +7,6 @@ Never commit, stash, stage, or change git settings (including `.gitignore` and
 `core.hooksPath`) at any step. If something looks like it needs one of those, say so and
 let the user do it (D-021).
 
-## 0. `--migrate`
-
-If invoked as `/repo-clean init --migrate`: the target is a legacy home — it already has
-`CLAUDE.md` and `docs/log/` but no `.repo-clean` marker (this is what the session-start hook's
-migrate hint means). Write the empty marker and delete the vendored
-`scripts/tools/check_docs.py` (D-015: no vendored copy once the marker exists). Nothing else
-changes. If the home has a `scripts/hooks/pre-commit` from an older release, tell the user
-it is no longer used and they can delete it and run `git config --unset core.hooksPath`
-themselves. Stop here; skip the rest of this file.
-
 ## 1. Refuse nesting, and check granularity
 
 Walk up from the target folder. If a `.repo-clean` marker exists at or above it, refuse:
@@ -41,7 +31,7 @@ loads nothing.
 
 ## 3. The file set
 
-Every home gets the same files with the same names and roles (D-013). Don't interview the
+Every home gets the same files with the same names and roles (D-022). Don't interview the
 user about which files to have:
 
 | File | Owns |
@@ -218,8 +208,7 @@ Do not move or touch any pre-existing markdown/html outside what you just scaffo
 The checker exists once, in the plugin (D-015) — nothing is vendored into this home, and
 nothing is installed into git. Run
 `python <plugin>/skills/repo-clean/scripts/check_docs.py --root .` and fix findings until it
-exits 0. Don't write a `check_docs_local.py` by default (D-013): it's optional, and a
-project that genuinely needs one records why in its own register.
+exits 0. There is no per-project checker add-on to write (D-022).
 
 ## 9. Coverage report
 

@@ -7,7 +7,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "if python3 -c pass >/dev/null 2>&1; then PY=python3; elif python -c pass >/dev/null 2>&1; then PY=python; else echo 'repo-clean: no python3/python found on PATH; hooks disabled'; exit 0; fi; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py\"; exit 0",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" session_start \"${CLAUDE_PLUGIN_ROOT}\"",
             "timeout": 30
           }
         ]
@@ -20,7 +20,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "if python3 -c pass >/dev/null 2>&1; then PY=python3; elif python -c pass >/dev/null 2>&1; then PY=python; else exit 0; fi; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/hooks/post_tool_use.py\"; exit 0",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" post_tool_use \"${CLAUDE_PLUGIN_ROOT}\"",
             "timeout": 5
           }
         ]
@@ -32,7 +32,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "if python3 -c pass >/dev/null 2>&1; then PY=python3; elif python -c pass >/dev/null 2>&1; then PY=python; else exit 0; fi; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" stop \"${CLAUDE_PLUGIN_ROOT}\"",
             "timeout": 30
           }
         ]

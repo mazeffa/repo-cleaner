@@ -9,15 +9,18 @@ covered it, however long that takes.
 import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
 BASE_DIR = Path(os.environ.get("REPO_CLEAN_HOME") or (Path.home() / ".claude" / "repo-clean"))
 HOMES_DIR = BASE_DIR / "homes"
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+# Every hook imports this module, so every hook can `import check_docs` (D-022: the plugin's
+# own checker, never a copy found in a project). Outside any try, so a bad path is loud.
+sys.path.insert(0, str(PLUGIN_ROOT / "skills" / "repo-clean" / "scripts"))
 
 
 def normalize_cwd(cwd):
@@ -34,10 +37,6 @@ def read_stdin_json():
     if not isinstance(data, dict):
         return {}
     return data
-
-
-STATE_RE = re.compile(r"^State:\s*(.*)$")
-NEXT_RE = re.compile(r"^Next:\s*(.*)$")
 
 
 def local_time(ts):
@@ -57,7 +56,9 @@ def _read_json(f):
 
 def _write_json(f, data):
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps(data), encoding="utf-8")
+    tmp = f.with_name(f.name + ".tmp")  # replace, so a crash never leaves half a record
+    tmp.write_text(json.dumps(data), encoding="utf-8")
+    os.replace(tmp, f)
 
 
 def load_session(home, session_id):
@@ -85,6 +86,7 @@ def add_file(session_id, home, rel_path):
     rec = load_session(home, session_id)
     if rel_path.lower().endswith(".md"):
         rec["dirty"] = True  # a doc changed; the next Stop runs the checker for this home
+    rec.setdefault("checked_at", time.time())  # from here on, Stop also catches changes made by any means
     save_session(home, session_id, rec)
 
 
@@ -103,98 +105,44 @@ def unfolded_sessions(home):
 
 
 def find_home(cwd):
-    """Walk up from cwd to the nearest repo-clean home (D-018). A home is either a
-    folder with the `.repo-clean` marker, or - for an install from before the marker
-    existed - a folder with `CLAUDE.md` and `docs/log/` and no marker yet (legacy).
-    Returns (home_path, is_legacy), or (None, False) if the walk reaches the filesystem
-    root with no home found."""
+    """Walk up from cwd to the nearest folder with the `.repo-clean` marker (D-023), or None."""
     p = Path(cwd).resolve()
     for candidate in (p, *p.parents):
         if (candidate / ".repo-clean").exists():
-            return candidate, False
-        if (candidate / "CLAUDE.md").exists() and (candidate / "docs" / "log").is_dir():
-            return candidate, True
-    return None, False
-
-
-def find_homes_nearby(cwd, depth=2):
-    """Homes up to `depth` levels below cwd - markers, and pre-marker homes (CLAUDE.md
-    beside docs/log/) - for a session opened above them. Not a general scan - D-018 only
-    globs two levels down from where the session already is."""
-    p = Path(cwd)
-    found = set()
-    for level in range(1, depth + 1):
-        stars = "/".join(["*"] * level)
-        found.update(m.parent for m in p.glob(stars + "/.repo-clean"))
-        found.update(m.parent.parent for m in p.glob(stars + "/docs/log")
-                     if (m.parent.parent / "CLAUDE.md").exists())
-    return sorted(found)
-
-
-def migrate_already_offered(home):
-    """Same one-shot-per-folder gate as setup_already_offered, keyed separately so the
-    legacy-migrate hint and the no-doc-system offer don't suppress each other."""
-    return setup_already_offered(Path(str(home)) / ".migrate-hint-key")
-
-
-def checker_path(root):
-    """The checker that runs for this home (D-015): its own working-tree copy if root
-    IS the plugin's source repo (dogfooding), else the one shipped beside these hooks -
-    never another version found in the plugin cache. No copy is vendored into a home."""
-    for base in (root, PLUGIN_ROOT):
-        p = base / "skills" / "repo-clean" / "scripts" / "check_docs.py"
-        if p.exists():
-            return p
+            return candidate
     return None
 
 
-def run_checker(root):
-    """Returns (returncode, stdout) or None if no checker is installed here."""
-    p = checker_path(root)
-    if p is None:
-        return None
+def find_homes_nearby(cwd, depth=2):
+    """Homes up to `depth` levels below cwd, for a session opened above them. Not a general
+    scan - D-018 only globs two levels down from where the session already is."""
+    p = Path(cwd)
+    found = set()
+    for level in range(1, depth + 1):
+        found.update(m.parent for m in p.glob("/".join(["*"] * level) + "/.repo-clean"))
+    return sorted(found)
+
+
+def checker_path():
+    """Always the checker shipped beside these hooks (D-022) - never a project's own copy and
+    never another version found in the plugin cache."""
+    return PLUGIN_ROOT / "skills" / "repo-clean" / "scripts" / "check_docs.py"
+
+
+def run_checker(root, timeout=25):
+    """Always (returncode, text): 0 clean, 1 doc findings, 2 the checker itself failed or is
+    missing, 124 it timed out. Only 1 is a finding about the docs. The hook limit is 30 s."""
+    p = checker_path()
+    if not p.exists():
+        return 2, f"checker not found: {p}"
     try:
         out = subprocess.run(
             [sys.executable, str(p), "--root", str(root)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=25,  # hook limit is 30
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return 1, "checker timed out"
-    return out.returncode, out.stdout
-
-
-FIELD_START_RE = re.compile(r"^[A-Z][\w-]*:")
-
-
-def _field_span(lines, i):
-    """Index range [i, j) covered by the field starting at lines[i], including any
-    wrapped continuation lines - a continuation is a non-blank line that doesn't itself
-    start a field or a heading."""
-    j = i + 1
-    while j < len(lines):
-        cont = lines[j]
-        if not cont.strip() or FIELD_START_RE.match(cont) or cont.startswith("#"):
-            break
-        j += 1
-    return i, j
-
-
-def last_field(root, field_re):
-    """The last such field across the log's period files, joined with any wrapped
-    continuation lines."""
-    log_dir = root / "docs" / "log"
-    found = None
-    for log_file in sorted(log_dir.glob("*.md")) if log_dir.is_dir() else []:
-        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-        for i, line in enumerate(lines):
-            if field_re.match(line):
-                start, end = _field_span(lines, i)
-                found = " ".join(lines[start:end])
-    return found
-
-
-def last_state_line(root):
-    return last_field(root, STATE_RE)
+        return 124, "checker timed out"
+    return out.returncode, out.stdout or out.stderr
 
 
 OFFERED_FILE = BASE_DIR / "offered.json"

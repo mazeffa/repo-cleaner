@@ -9,8 +9,8 @@ docs. Nothing touches git.
 
 This is the USAP data team's internal fork, hosted in Azure DevOps. It is not
 published and has no external users; the rule set answers to this team's work
-rather than the general case. See `docs/DECISIONS.md` D-011 for why, and D-013
-through D-021 for the current design.
+rather than the general case. See `docs/DECISIONS.md` D-011 for why, and D-015
+through D-024 for the current design.
 
 ## Install
 
@@ -53,11 +53,18 @@ well-formed — it does not mean they are right. Specifically, it cannot tell:
   restated code constants both pass;
 - whether a doc's claims are still true, beyond what a stale `Date:` hints at;
 - whether a script or data path named in a doc still exists: `paths-exist` checks only
-  `.md` paths (D-016(b)), so a decision naming a deleted `.py` or `.R` file passes.
+  `.md` paths (D-016(b)), so a decision naming a deleted `.py` or `.R` file passes;
+- whether an archive banner cites a real path or a research doc carries `Status:`/`Date:` —
+  both conventions stay, but nothing enforces them (D-024).
 
 Those need reading, which is what `maintain --check` step 6 is for. Treat a
 green run as "nothing is malformed", not "the docs are correct" — a checker
 that looks more authoritative than it is does more harm than no checker.
+
+A few effects of how the Stop hook decides a doc changed: a doc changed by another window or
+a `git pull` mid-session is checked at the end of your next turn, and blocks once per turn
+until fixed; and a session opened in one project that edits only a nested project is
+recorded in both.
 
 ## What gets installed into your repo
 
@@ -69,19 +76,18 @@ have `scripts/hooks/pre-commit`; it is no longer used, and you can delete it and
 `git config --unset core.hooksPath`.
 
 You can also run the checker directly, without a session, from wherever the plugin cache
-put it:
+put it. With no `--root` it checks the nearest `.repo-clean` home at or above the current
+folder; with none, it exits 2:
 
 ```
 python <plugin-cache>/skills/repo-clean/scripts/check_docs.py --root DIR
-python <plugin-cache>/skills/repo-clean/scripts/check_docs.py --selfcheck
-python <plugin-cache>/skills/repo-clean/scripts/check_docs.py --init-config
 ```
 
-This repo's own commands use its working-tree copy directly (no `--root` needed):
+This repo's own commands use its working-tree copy directly:
 
 ```
 python skills/repo-clean/scripts/check_docs.py
-python skills/repo-clean/scripts/check_docs.py --selfcheck
+python hooks/selftest.py
 ```
 
 ## This repo uses its own system
