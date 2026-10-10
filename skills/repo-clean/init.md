@@ -1,34 +1,76 @@
 # init
 
-Scaffold the doc system in a repo that doesn't have one yet.
+Scaffold the doc system in a folder that doesn't have one yet — a **home** (D-018), not
+necessarily the repo root.
 
-## 1. Read the repo
+Never commit, stash, stage, or change git settings (including `.gitignore` and
+`core.hooksPath`) at any step. If something looks like it needs one of those, say so and
+let the user do it (D-021).
 
-Look at the repo's top-level layout, README (if any), and any existing docs. Get a sense of
-what questions this repo has to answer (what it is, how to run it, what's been decided, what
-happened and when).
+## 0. `--migrate`
 
-## 2. Interview, or take the defaults
+If invoked as `/repo-clean init --migrate`: the target is a legacy home — it already has
+`CLAUDE.md` and `docs/log/` but no `.repo-clean` marker (this is what the session-start hook's
+migrate hint means). Write the empty marker and delete the vendored
+`scripts/tools/check_docs.py` (D-015: no vendored copy once the marker exists). Nothing else
+changes. If the home has a `scripts/hooks/pre-commit` from an older release, tell the user
+it is no longer used and they can delete it and run `git config --unset core.hooksPath`
+themselves. Stop here; skip the rest of this file.
 
-Ask: **"What questions does this repo need to answer?"** Aim for 5-12 rows — each becomes one
-routing-table row and (usually) one file. Let the user edit the list.
+## 1. Refuse nesting, and check granularity
 
-If the user says **"just use defaults"**, skip the interview and scaffold the default layout
-wholesale: `README.md` (what/setup/run), `docs/DECISIONS.md` (what we believe and why),
-`docs/log/<period>.md` (what happened, current state), plus whatever `docs/research/*.md`
-subject files the repo obviously needs (ask once, briefly, which subjects — don't guess a
-long list).
+Walk up from the target folder. If a `.repo-clean` marker exists at or above it, refuse:
+homes don't nest (D-012/D-018). Say where the existing home is.
 
-From the list, derive:
-- **File names.** Use the default layout's names as the default pattern
-  (`docs/DECISIONS.md`, `docs/log/<period>.md`, `docs/research/<subject>.md`) unless the
-  repo already has a strong convention.
-- **Log period.** A season, a quarter, a year — whatever this repo's natural work cadence is.
-  Ask if it's not obvious. Period filenames must sort lexically in chronological order, one
-  consistent zero-padded shape (`2026.md`, `2026-Q1.md`, `2026-01.md`, never mixed) — the
-  checker takes the lexically last file's last entry as the log's last entry.
+If the target is a repo root with two or more child folders that each carry their own
+`README.md` or tracker file (`MASTER_TRACKING.md`, `STATUS.md`, `CHANGELOG.md`, etc.), don't
+scaffold the root — warn that this looks like several independent projects sharing a repo,
+and propose the child folder the session is actually working in instead. Without this guard,
+whoever runs `init` first at a shared root blocks every project under it from getting its own
+home.
 
-## 3. Rules to adapt into CLAUDE.md
+## 2. Read the folder
+
+Look at the target folder's top-level layout, README (if any), and any existing docs and
+trackers (`MASTER_TRACKING.md`, `STATUS.md`, `BUGS.md`, `CHANGELOG.md`, `INVENTORY.md`, and
+the like).
+
+If `CLAUDE.md` already exists, check every `@` reference in it points to a real file
+(resolve each relative to `CLAUDE.md`'s folder). Report any that don't; a dead `@` silently
+loads nothing.
+
+## 3. The file set
+
+Every home gets the same files with the same names and roles (D-013). Don't interview the
+user about which files to have:
+
+| File | Owns |
+|---|---|
+| `.repo-clean` | Home marker, empty |
+| `CLAUDE.md` | Routing table and rules |
+| `README.md` | What it is, how to run it |
+| `docs/DECISIONS.md` | What we believe and why; open items and enhancements |
+| `docs/DEFECTS.md` | What is broken |
+| `docs/log/<year>.md` | What happened; `State:` and `Next:` on the last entry |
+| `docs/archive/` and its `README.md` | Rationale, banner-marked |
+| `docs/research/<subject>.md` | Evidence, optional, one per subject |
+
+The log has one file per year, named `2026.md` — the checker takes the lexically last file's
+last entry as the log's last entry.
+
+Ask once, briefly, which research subjects the folder obviously needs; don't guess a long
+list. Where the folder genuinely doesn't fit the set, ask, and record the user's call as a
+decision in the new register.
+
+**Existing trackers.** For each one, offer the user a choice:
+
+- **Adopt** — lift its current state and next steps into the new log's first entry
+  (`State:`, `Next:`), then archive the tracker with a banner. Don't leave it beside the new
+  files: that gives one job two homes.
+- **Convert** — move its content into the standard files (decisions to `DECISIONS.md`,
+  defects to `DEFECTS.md`, history to the log), then archive it the same way.
+
+## 4. Rules to adapt into CLAUDE.md
 
 Carry these rules over **verbatim** (they're about the doc system itself, not this
 particular repo):
@@ -41,9 +83,9 @@ particular repo):
   reconcile it silently.
 - A rule's text, a measured number, or a defect description lives in exactly one file. Every
   other doc points to it — never repeats the codes, numbers, or conditions themselves.
-- The checker must exit 0 before a commit lands; the Stop hook enforces this every session,
-  and the pre-commit hook is a backstop where git exists. If you edited `docs/`, commit
-  before you stop.
+- The repo-clean checker must exit 0; the Stop hook runs it whenever a doc changed. The log
+  is written by fold-in (`/repo-clean maintain`), which runs at session start and when you
+  say the session is over.
 
 **Ask** about these — they're repo-specific, so no generic wording will fit as-is:
 - Where scripts run from / what path literals are relative to.
@@ -52,14 +94,17 @@ particular repo):
 - No test suite / CI caveat, if true here.
 - Any one-off "don't re-flag this" rule (e.g. a deliberately committed env file).
 
-## 4. Never overwrite an existing CLAUDE.md or DECISIONS.md
+## 5. Never overwrite an existing CLAUDE.md or DECISIONS.md
 
 If `CLAUDE.md` already exists: insert the routing table and rules as a new section, or warn
 the user and ask how to merge. Same for `docs/DECISIONS.md`. Never clobber existing content.
 
 If a derived filename collides with an existing file, pause and ask before writing.
 
-## 5. Scaffold
+## 6. Scaffold
+
+Write the empty `.repo-clean` marker file first — its presence is the whole declaration of
+where the home is (D-018).
 
 **`CLAUDE.md`** (new section if the file exists, else the whole file):
 
@@ -68,8 +113,11 @@ If a derived filename collides with an existing file, pause and ask before writi
 
 | Question | Authority |
 |---|---|
-| <question 1> | `<file 1>` |
-| <question 2> | `<file 2>` |
+| What this is, how to run it | `README.md` |
+| What we believe and why (D-NNN) | `docs/DECISIONS.md` |
+| What is broken | `docs/DEFECTS.md` |
+| What happened, current state and next steps | `docs/log/<year>.md` — the last entry's `State:` and `Next:` |
+| <one row per research subject> | `docs/research/<subject>.md` |
 
 Every question has exactly one authoritative file. If no row matches, ask before creating a
 document.
@@ -78,11 +126,7 @@ document.
 
 ## Rules
 
-<adapted rules from step 3>
-
-`python scripts/tools/check_docs.py` must exit 0 before a commit lands; the Stop hook
-enforces this every session, and `scripts/hooks/pre-commit` is a backstop where git exists.
-If you edited `docs/`, commit before you stop.
+<adapted rules from step 4>
 ```
 
 **`docs/DECISIONS.md`**:
@@ -109,26 +153,40 @@ Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supers
 ## D-001 — Adopt the repo-clean doc system
 Status: active   Verdict: adopted   Date: <today>
 Decision: Track decisions here, route questions through CLAUDE.md, log work in
-docs/log/<period>.md, gate commits on scripts/tools/check_docs.py.
+docs/log/<year>.md, and keep the repo-clean checker passing.
 Why: <one line — why this repo needed it>
 ```
 
-**`docs/log/<period>.md`**:
+**`docs/DEFECTS.md`**:
+
+```markdown
+# Known defects
+
+This file is authoritative for **what is broken**. Each defect: `### DEF-NN — title`, a
+`Status:` line (`confirmed`, `reported`, or `fixed`), what goes wrong, and when it gets
+fixed.
+
+## Open
+```
+
+**`docs/log/<year>.md`**:
 
 ```markdown
 > **Format for new entries** (append-only): `## YYYY-MM-DD [(N)] — headline`, `(N)` only
 > when more than one entry shares a date. Then `Decisions:` (D-NNN this entry touched, or
-> `none`) and `Docs:` (files changed), plus `State:` on the log's last entry only, across
-> period files — one line: what's true now, what's pending. Current state is always
-> `grep -h '^State:' docs/log/*.md | tail -1`.
+> `none`) and `Docs:` (files changed), plus `State:` (what's true now) and `Next:` (what to
+> do next) on the log's last entry only, across year files. Current state is always
+> `grep -h '^State:' docs/log/*.md | tail -1`. An entry is what someone needs to resume —
+> typically 5 to 15 lines — not a narrative of the session.
 
-# <period> log
+# <year> log
 
 ## <today> — Doc system adopted
 
 Decisions: D-001
-Docs: CLAUDE.md, docs/DECISIONS.md
-State: Doc system scaffolded; checker installed and passing.
+Docs: CLAUDE.md, docs/DECISIONS.md, docs/DEFECTS.md
+State: Doc system scaffolded; checker passing. <adopted tracker's state, if any>
+Next: <adopted tracker's next steps, or the first piece of work>
 ```
 
 **`docs/research/<subject>.md`** (only for subjects a routing row actually names):
@@ -150,29 +208,23 @@ Also create `docs/archive/` with a short `README.md` explaining the banner conve
 (`> **Archived YYYY-MM-DD.** <disposition>` — rationale, not instruction) so `reorganize` has
 a target directory later.
 
-## 6. Existing stray docs
+## 7. Existing stray docs
 
 Do not move or touch any pre-existing markdown/html outside what you just scaffolded. Say:
 "There are existing docs not yet covered — run `/repo-clean reorganize` to fold them in."
 
-## 7. Install the checker
+## 8. Run the checker
 
-1. Copy `<skill>/scripts/check_docs.py` → `scripts/tools/check_docs.py` as the fallback for
-   machines without the plugin (D-010). Git is optional: the Stop hook (see Hooks in
-   `SKILL.md`) is the primary enforcement and needs no git.
-2. If `.git` exists: also copy `<skill>/scripts/pre-commit` → `scripts/hooks/pre-commit` —
-   it resolves the newest cached plugin core at commit time, falling back to the vendored
-   copy only when the plugin cache is absent — `chmod +x` it (`git update-index
-   --chmod=+x scripts/hooks/pre-commit` if `chmod` isn't available), and `git config
-   core.hooksPath scripts/hooks` — if `core.hooksPath` is already set to something else,
-   warn and ask rather than overriding it. Skip this step entirely when there is no `.git`.
-3. If no `check_docs_local.py` exists: run `--init-config`, then trim the starter down to
-   only the CONFIG keys actually different from the core defaults.
-4. Run `python scripts/tools/check_docs.py` and fix findings until it exits 0.
+The checker exists once, in the plugin (D-015) — nothing is vendored into this home, and
+nothing is installed into git. Run
+`python <plugin>/skills/repo-clean/scripts/check_docs.py --root .` and fix findings until it
+exits 0. Don't write a `check_docs_local.py` by default (D-013): it's optional, and a
+project that genuinely needs one records why in its own register.
 
-## 8. Coverage report
+## 9. Coverage report
 
 End with a short report:
 - Existing `.md`/`.html` files not covered by any routing-table row.
 - Any derived filename that collided with an existing file (already paused for input above,
   but restate the resolution here).
+- Any dead `@` reference found in step 2.

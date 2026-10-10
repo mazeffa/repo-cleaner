@@ -13,9 +13,14 @@ repro below.
 `Status:` is `confirmed` (reproduced here), `reported` (found by the pass, not independently
 reproduced), or `fixed` (with the commit that closed it). All 22 from that pass are fixed,
 closed by commit `724dd50`. DEF-23 through DEF-28, found later and by a different route, are
-fixed.
+fixed, and so are DEF-29 through DEF-35, closed by release 0.9.0 (DEF-31 through DEF-34 were
+found 2026-10-09 by fact-checking an explainer page; DEF-35 by a review of the 0.9.0 tree).
 
-## Fixed 2026-09-19
+## Open
+
+None.
+
+## Fixed 2026-09-18 (first pass)
 
 ### DEF-01 — Crash on a repo path containing non-ASCII
 Status: fixed
@@ -345,3 +350,63 @@ target repo's own log to change (a doc edit, not new required structure), and a
 `CONFIG_VERSION` mismatch exits 2 for every target with a `check_docs_local.py` — the
 finding text already says what to fix. The idea of bumping it anyway stays parked in
 DEF-23's list.
+
+## Fixed in 0.9.0 (commit hook removed, setup kept out of git)
+
+### DEF-29 — This repo's pre-commit runs the selftest on every commit, unscoped
+Status: fixed
+Was: this repo's `scripts/hooks/pre-commit` ended with an unconditional
+`hooks/selftest.py` run outside its per-home loop, so it ran on every commit in this repo no
+matter which home the staged files resolved to. It made the first draft of a pre-commit test
+a false positive: the tail failed on the same deletion the test was meant to catch.
+Fix: D-021 removed the commit hook. `scripts/hooks/pre-commit`, its plugin template and
+their tests are deleted; `hooks/selftest.py` is run by hand.
+
+### DEF-30 — Setup swept the user's unrelated work into git
+Status: fixed
+Was: during the `presentation creator` setup, the agent committed the user's pending slide
+work (`bd57c93`) to get the clean tree `reorganize` requires, instead of stopping to ask, and
+wrote a `.gitignore` for `node_modules/` and `dist/` that `init` never asks for — a
+24,776-path untracking change the user then committed in 22 batches.
+Fix: `init.md` and `reorganize.md` both say in plain words never to commit, stash, stage or
+change git settings, `.gitignore` included; `reorganize` keeps its clean-tree check and
+stops and asks; `SKILL.md`'s principles carry the same rule.
+
+### DEF-31 — D-021 and `reorganize.md` disagreed on whether reorganize stages
+Status: fixed
+Was: `reorganize.md` step 1 said it never stages, then made `git mv` "the one exception", and
+`git mv` stages the rename, against D-021 (1).
+Fix: step 5 uses a plain move and the exception sentence is gone; D-021 is unchanged. Step 7's
+rollback now names the untracked archive copies it leaves behind.
+
+### DEF-32 — `maintain --check` was told both to skip transcripts and to route their facts
+Status: fixed
+Was: step 1 said `--check` lists sessions and reads no transcripts; step 2 said it reports the
+routing of each fact, which needs them.
+Fix: `--check` runs `list` and `read`, reports where each fact would go, and writes nothing
+(`done` included).
+
+### DEF-33 — The fold-in session itself always came back as waiting
+Status: fixed
+Was: `fold.py done` saved the current time and the folding session's own Stop landed after
+it, so the next start asked for a fold-in again, forever.
+Fix: `done` marks the listed sessions' `folded_stop` and flags its own session
+(`CLAUDE_CODE_SESSION_ID`) with `fold_pending`; Stop turns that flag into `folded_stop`. Work
+done afterwards still counts. Without the session id (an older Claude Code) the prompt comes
+back but nothing is lost.
+
+### DEF-34 — A session that stopped during a fold-in was marked folded unread
+Status: fixed
+Was: `done` recorded "now", so a session whose Stop landed between `list` and `done` was
+never listed again.
+Fix: `list` prints a `done` line of `id@last_stop` pairs and `done` marks only those; the
+registry no longer has a per-home fold time. `hooks/selftest.py` covers both DEF-33 and
+DEF-34.
+
+### DEF-35 — SessionStart and Stop crashed on a `→` in the log on Windows
+Status: fixed
+Was: both hooks printed with the console code page (cp1252), which has no `→`, and this repo's
+own log has one. The self-test hid it by forcing `PYTHONIOENCODING=utf-8`.
+Fix: both hooks switch stdout (and Stop, stderr) to UTF-8; the self-test no longer forces it
+and its test home carries a `→`. `run_checker` also decodes with `errors="replace"`, since a
+crashing checker writes in the console code page.

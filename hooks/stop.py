@@ -1,89 +1,57 @@
 #!/usr/bin/env python3
-"""Stop hook: force the session's log entry to exist and the checker to pass before
-Claude goes quiet, when it changed files this session. Exit 0 = let it stop. Exit 2 =
-block, with the reason printed for Claude to act on. Reading or answering without
-editing anything writes nothing and never blocks.
+"""Stop hook (D-021): record the session against every home it touched - or, with no
+edits, the home it opened in - so the next fold-in can find it. If a markdown doc in a
+touched home changed since the last check, run the checker for that home and block on a
+finding (exit 2, reason on stderr for Claude to fix). Writes no log entry.
 
-Retries are capped: after MAX_RETRIES straight blocks with no progress (e.g. a finding
-Claude can't fix, like a missing decisions file), the hook fails open with a warning
-instead of wedging the session shut forever.
+`stop_hook_active` means Claude is already continuing because of this hook; the record is
+still updated but nothing blocks, so a finding Claude can't fix never wedges the session.
+Unchecked docs stay marked and are checked at the next Stop.
 """
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _lib import (
-    checker_drift_summary, entry_has_placeholder, entry_line_no, ensure_entry, latest_log_file,
-    load_session, read_stdin_json, run_checker, save_session,
-)
-
-MAX_RETRIES = 3
+from _lib import find_home, read_stdin_json, run_checker, save_session, session_homes
 
 
 def main():
     data = read_stdin_json()
     session_id = data.get("session_id")
-    cwd = Path(data.get("cwd") or ".").resolve()
     if not session_id:
         return 0
+    touched = session_homes(session_id)
+    if not touched:
+        home, _ = find_home(Path(data.get("cwd") or ".").resolve())
+        if home is None:
+            return 0  # opened above every home and edited nothing: nowhere to record it
+        touched = [(home, {})]
 
-    session = load_session(session_id)
-    files = session.get("files", [])
-    pending = session.get("pending", False)
-    if not files and not pending:
-        return 0  # nothing changed, or already logged clean
-
-    log = latest_log_file(cwd)
-    if log is None:
-        return 0  # no doc system here; nothing to force
-
-    if files:
-        ensure_entry(cwd, session, files)
-        session["files"] = []
-        session["retries"] = 0  # new edits are progress; reset the retry budget
-    session["pending"] = True
-
-    findings = run_checker(cwd)
-    checker_clean = not (findings and findings[0] != 0)
-    placeholder = entry_has_placeholder(log, session)
-
-    if not placeholder and checker_clean:
-        session["pending"] = False
-        session["retries"] = 0
-        save_session(session_id, session)
-        return 0
-
+    blocking = not data.get("stop_hook_active")
     reasons = []
-    if placeholder:
-        reasons.append('the headline and/or State: sentence are still "TBD"')
-    if not checker_clean:
-        reasons.append(f"the checker found issues:\n{findings[1].strip()}")
-    drift = checker_drift_summary(cwd)
-    if drift:
-        reasons.append(f"note: the checker that ran differs from the plugin's ({drift})")
-    reason_text = "; ".join(reasons)
+    for home, rec in touched:
+        rec["transcript"] = data.get("transcript_path") or rec.get("transcript")
+        rec["last_stop"] = time.time()
+        if rec.pop("fold_pending", False):
+            rec["folded_stop"] = rec["last_stop"]  # this session only folded in; DEF-33
+        if rec.get("dirty") and blocking:
+            result = run_checker(home)
+            if not result or result[0] == 0:
+                rec["dirty"] = False
+            else:
+                reasons.append(f"{home}: the checker exited {result[0]}:\n"
+                               f"{result[1].strip() or '(no output)'}")
+        save_session(home, session_id, rec)
 
-    rel = log.relative_to(cwd)
-    line_no = entry_line_no(log, session)
-    retries = session.get("retries", 0) + 1
-    session["retries"] = retries
-    save_session(session_id, session)
-
-    if retries > MAX_RETRIES:
-        print(
-            f"repo-clean: giving up after {MAX_RETRIES} tries, letting the session stop "
-            f"anyway (entry passed unverified). {rel} line {line_no} still needs a human "
-            f"look: {reason_text}",
-            file=sys.stderr,
-        )
-        session["pending"] = False
-        session["retries"] = 0
-        save_session(session_id, session)
-        return 0
-
-    print(f"Entry at {rel} line {line_no} is not ready: {reason_text}", file=sys.stderr)
-    return 2
+    if reasons:
+        print("repo-clean: fix these doc findings before stopping.\n" + "\n\n".join(reasons),
+              file=sys.stderr)
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     sys.exit(main())

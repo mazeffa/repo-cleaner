@@ -1,9 +1,9 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "repo-clean",
-  "description": "Marketplace for the repo-clean plugin: docs hygiene (routing table, decision register, append-only log, stdlib checker + pre-commit gate).",
+  "description": "USAP data team's internal marketplace for repo-clean: docs hygiene (routing table, decision register, append-only log, stdlib checker, fold-in from session transcripts).",
   "owner": {
-    "name": "repo-clean"
+    "name": "USAP Data Team"
   },
   "plugins": [
     {

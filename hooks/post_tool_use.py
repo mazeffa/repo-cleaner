@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
-"""PostToolUse hook (Edit|Write|MultiEdit|NotebookEdit): record which file changed for
-this session. No output, no cost - the Stop hook does the bookkeeping later."""
+"""PostToolUse hook (Edit|Write|MultiEdit|NotebookEdit): record which file changed, under
+the home that file belongs to - resolved from the file's own path, not the session's
+working directory, so a session opened above many homes still credits the right one.
+No output, no cost - the Stop hook does the rest."""
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _lib import add_file, read_stdin_json
+from _lib import add_file, find_home, read_stdin_json
 
 
 def main():
     data = read_stdin_json()
     session_id = data.get("session_id")
-    file_path = (data.get("tool_input") or {}).get("file_path")
-    cwd = Path(data.get("cwd") or ".").resolve()
-    if session_id and file_path:
-        try:
-            file_path = Path(file_path).resolve().relative_to(cwd).as_posix()
-        except ValueError:
-            return 0
-        add_file(session_id, file_path, cwd)
+    tool_input = data.get("tool_input") or {}
+    file_path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if not session_id or not file_path:
+        return 0
+    path = Path(data.get("cwd") or ".", file_path).resolve()
+    home, _ = find_home(path.parent)
+    if home is None:
+        return 0
+    add_file(session_id, home, path.relative_to(home).as_posix())
     return 0
 
 

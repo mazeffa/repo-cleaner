@@ -6,9 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py\"; exit 0",
-            "commandWindows": "if (Get-Command python -ErrorAction SilentlyContinue) { python \"$env:CLAUDE_PLUGIN_ROOT\\hooks\\session_start.py\" }",
-            "timeout": 10
+            "shell": "bash",
+            "command": "if python3 -c pass >/dev/null 2>&1; then PY=python3; elif python -c pass >/dev/null 2>&1; then PY=python; else echo 'repo-clean: no python3/python found on PATH; hooks disabled'; exit 0; fi; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py\"; exit 0",
+            "timeout": 30
           }
         ]
       }
@@ -19,8 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post_tool_use.py\"; exit 0",
-            "commandWindows": "if (Get-Command python -ErrorAction SilentlyContinue) { python \"$env:CLAUDE_PLUGIN_ROOT\\hooks\\post_tool_use.py\" }",
+            "shell": "bash",
+            "command": "if python3 -c pass >/dev/null 2>&1; then PY=python3; elif python -c pass >/dev/null 2>&1; then PY=python; else exit 0; fi; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/hooks/post_tool_use.py\"; exit 0",
             "timeout": 5
           }
         ]
@@ -31,21 +31,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.py\"",
-            "commandWindows": "if (Get-Command python -ErrorAction SilentlyContinue) { python \"$env:CLAUDE_PLUGIN_ROOT\\hooks\\stop.py\" }",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_compact.py\"; exit 0",
-            "commandWindows": "if (Get-Command python -ErrorAction SilentlyContinue) { python \"$env:CLAUDE_PLUGIN_ROOT\\hooks\\pre_compact.py\" }",
-            "timeout": 10
+            "shell": "bash",
+            "command": "if python3 -c pass >/dev/null 2>&1; then PY=python3; elif python -c pass >/dev/null 2>&1; then PY=python; else exit 0; fi; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.py\"",
+            "timeout": 30
           }
         ]
       }

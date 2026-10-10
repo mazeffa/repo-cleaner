@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """Self-test for hooks/. Stdlib only. `python hooks/selftest.py` exits 0 or asserts.
+Run by hand; nothing runs it automatically (D-021).
 
 Drives each hook via subprocess against a scratch copy of this repo (a known-good doc
 tree), under a temp dir whose path has both a non-ASCII char and a space, so path
-handling bugs surface here instead of in a real session. Session/offer state is
+handling bugs surface here instead of in a real session. Registry/offer state is
 isolated per test via REPO_CLEAN_HOME so this never touches a real user's data.
 """
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_DIR = REPO_ROOT / "hooks"
 FIXTURES_DIR = HOOKS_DIR / "fixtures"
+sys.path.insert(0, str(HOOKS_DIR))
 
 _FAILURES = []
 
@@ -39,13 +39,31 @@ def make_scratch_repo(base):
     dest = base / f"réviser projet {_scratch_n[0]}"  # non-ASCII + space
     shutil.copytree(
         REPO_ROOT, dest,
-        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+        ignore=shutil.ignore_patterns(".git", "__pycache__", ".repo-clean"),
     )
     return dest
 
 
+def make_home(parent, name, broken=False):
+    """A small marked home with a clean doc set - or, with broken=True, a dangling link."""
+    h = parent / name
+    (h / "docs" / "log").mkdir(parents=True)
+    (h / ".repo-clean").write_text("", encoding="utf-8")
+    (h / "CLAUDE.md").write_text(
+        "| Q | A |\n|---|---|\n| decisions | `docs/DECISIONS.md` |\n", encoding="utf-8")
+    (h / "README.md").write_text(
+        "See `docs/NOT_THERE.md`.\n" if broken else "fine\n", encoding="utf-8")
+    (h / "docs" / "DECISIONS.md").write_text(
+        "## Open questions\n\n## Fields\n\n## D-001 — a\nStatus: active   Verdict: adopted\n",
+        encoding="utf-8")
+    (h / "docs" / "log" / "2026.md").write_text(
+        "## 2026-01-01 — start\n\nDecisions: D-001\nDocs: CLAUDE.md\nState: ok → next\nNext: more\n",
+        encoding="utf-8")
+    return h
+
+
 EVENT_OF = {"post_tool_use.py": "PostToolUse", "stop.py": "Stop",
-            "pre_compact.py": "PreCompact", "session_start.py": "SessionStart"}
+            "session_start.py": "SessionStart"}
 
 
 def payload(name, fields):
@@ -57,442 +75,292 @@ def payload(name, fields):
     return data
 
 
-def run_hook(name, data, home, input_text=None, extra_env=None):
+def run_hook(name, data, home, input_text=None, extra_env=None, args=()):
     env = dict(os.environ)
     env["REPO_CLEAN_HOME"] = str(home)
-    env["PYTHONIOENCODING"] = "utf-8"
+    env.pop("CLAUDE_CODE_SESSION_ID", None)  # this session's own id must not leak in
     if extra_env:
         env.update(extra_env)
-    stdin = input_text if input_text is not None else json.dumps(payload(name, data))
+    stdin = input_text if input_text is not None else json.dumps(payload(name, data or {}))
     out = subprocess.run(
-        [sys.executable, str(HOOKS_DIR / name)],
+        [sys.executable, str(HOOKS_DIR / name), *args],
         input=stdin, capture_output=True, text=True, encoding="utf-8", env=env,
     )
     return out.returncode, out.stdout, out.stderr
 
 
-def session_file(home, session_id):
-    return home / "sessions" / f"{session_id}.json"
+def records(state, session_id):
+    """{home folder name: record} for every home this session has a record in."""
+    out = {}
+    for f in (state / "homes").glob(f"*/{session_id}.json"):
+        rec = json.loads(f.read_text(encoding="utf-8"))
+        out[Path(rec["home"]).name] = rec
+    return out
 
 
-def load_session(home, session_id):
-    f = session_file(home, session_id)
-    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+def edit(state, sid, cwd, path):
+    run_hook("post_tool_use.py", {"session_id": sid, "cwd": str(cwd),
+                                  "tool_input": {"file_path": str(path)}}, state)
 
 
-def write_session(home, session_id, data):
-    d = home / "sessions"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"{session_id}.json").write_text(json.dumps(data), encoding="utf-8")
-
-
-def log_path(repo):
-    return sorted((repo / "docs" / "log").glob("*.md"))[-1]
+def stop(state, sid, cwd, active=False):
+    return run_hook("stop.py", {"session_id": sid, "cwd": str(cwd),
+                                "stop_hook_active": active}, state)
 
 
 def test_post_tool_use(base):
-    repo = make_scratch_repo(base)
-    home = base / "home1"
-    sid = "s1"
+    top = base / "two homes"
+    a, b = make_home(top, "proj-a"), make_home(top, "proj-b")
+    state = base / "state_ptu"
 
-    rc, _, _ = run_hook("post_tool_use.py",
-                         {"session_id": sid, "cwd": str(repo),
-                          "tool_input": {"file_path": str(repo / "README.md")}}, home)
-    check("post_tool_use: exit 0", rc == 0)
-    sess = load_session(home, sid)
-    check("post_tool_use: records a file", sess and sess["files"] == ["README.md"], sess)
-    check("post_tool_use: stores normalized cwd",
-          sess and sess["cwd"] == os.path.normcase(os.path.realpath(str(repo))), sess)
-
-    run_hook("post_tool_use.py",
-              {"session_id": sid, "cwd": str(repo),
-               "tool_input": {"file_path": str(repo / "docs" / "log" / log_path(repo).name)}},
-              home)
-    sess = load_session(home, sid)
-    check("post_tool_use: ignores docs/log/", sess["files"] == ["README.md"], sess)
-
-    run_hook("post_tool_use.py",
-              {"session_id": sid, "cwd": str(repo),
-               "tool_input": {"file_path": str(repo / "README.md")}}, home)
-    sess = load_session(home, sid)
-    check("post_tool_use: dedups", sess["files"] == ["README.md"], sess)
-
-    run_hook("post_tool_use.py",
-              {"session_id": sid, "cwd": str(repo),
-               "tool_input": {"file_path": str(base / "elsewhere.md")}}, home)
-    sess = load_session(home, sid)
-    check("post_tool_use: ignores paths outside cwd", sess["files"] == ["README.md"], sess)
+    edit(state, "s1", top, a / "README.md")
+    edit(state, "s1", top, b / "model.R")
+    edit(state, "s1", top, a / "README.md")
+    edit(state, "s1", top, top / "loose.md")
+    run_hook("post_tool_use.py", {"session_id": "s1", "cwd": str(top), "tool_name": "NotebookEdit",
+                                  "tool_input": {"notebook_path": str(b / "nb.ipynb")}}, state)
+    recs = records(state, "s1")
+    check("post_tool_use: credits each file to its own home, opened above both",
+          set(recs) == {"proj-a", "proj-b"}, recs)
+    check("post_tool_use: a record exists per home, notebook_path included",
+          all(r.get("home") for r in recs.values()), recs)
+    check("post_tool_use: a .md edit marks the home for checking, other files don't",
+          recs["proj-a"].get("dirty") and not recs["proj-b"].get("dirty"), recs)
 
 
 def test_stop(base):
+    top = base / "stop homes"
+    a, b = make_home(top, "proj-a", broken=True), make_home(top, "proj-b", broken=True)
+    state = base / "state_stop"
+
+    rc, out, err = stop(state, "nosuch", base)
+    check("stop: outside every home, no edits - silent, nothing recorded",
+          rc == 0 and not out and not err and not records(state, "nosuch"), (rc, out, err))
+
+    rc, _, err = stop(state, "idle", a)
+    rec = records(state, "idle").get("proj-a", {})
+    check("stop: a session with no edits is recorded against its home",
+          rc == 0 and rec.get("last_stop") and rec.get("transcript"), (rc, err, rec))
+
+    edit(state, "r-only", top, b / "model.R")
+    rc, _, err = stop(state, "r-only", top)
+    check("stop: a code-only edit runs no checker, even in a broken home", rc == 0, err)
+
+    edit(state, "md", top, a / "README.md")
+    rc, _, err = stop(state, "md", top)
+    check("stop: a .md edit in a broken home blocks", rc == 2 and "NOT_THERE" in err, (rc, err))
+    check("stop: only the home whose .md changed is checked", "proj-b" not in err, err)
+    rc, _, err = stop(state, "md", top, active=True)
+    check("stop: stop_hook_active lets the session stop", rc == 0, err)
+    rc, _, err = stop(state, "md", top)
+    check("stop: a failing check stays marked, so the next Stop blocks again", rc == 2, err)
+
+    edit(state, "md2", a, a / "README.md")
+    stop(state, "md2", a, active=True)
+    check("stop: a doc edited during the hook's own continuation stays marked",
+          records(state, "md2")["proj-a"].get("dirty"), records(state, "md2"))
+    edit(state, "md3", a, a / "README.md")
+    rc, _, _ = stop(state, "md3", a)
+    check("stop: a checker failure leaves dirty set",
+          rc == 2 and records(state, "md3")["proj-a"].get("dirty"), records(state, "md3"))
+
+
+def test_stop_broken_checker(base):
+    """run_checker() shells out to the checker rather than importing it, so a corrupt
+    working-tree copy (D-015) blocks with a clean message instead of crashing Stop."""
     repo = make_scratch_repo(base)
-    home = base / "home2"
-    (repo / "scratch-only.md").write_text("x\n", encoding="utf-8")
-
-    rc, out, err = run_hook("stop.py", {"session_id": "nosuch", "cwd": str(repo)}, home)
-    check("stop: silent, no session record", rc == 0 and not out and not err)
-
-    write_session(home, "clean", {"files": [], "pending": False})
-    rc, out, err = run_hook("stop.py", {"session_id": "clean", "cwd": str(repo)}, home)
-    check("stop: silent when nothing changed", rc == 0 and not out and not err)
-
-    write_session(home, "s3", {"files": ["scratch-only.md"], "pending": False})
-    rc, out, err = run_hook("stop.py", {"session_id": "s3", "cwd": str(repo)}, home)
-    check("stop: blocks with TBD", rc == 2)
-    check("stop: reason on stderr", "not ready" in err)
-    check("stop: nothing on stdout", out == "")
-
-    log = log_path(repo)
-    text = log.read_text(encoding="utf-8")
-    text = text.replace("— TBD", "— fixed the thing")
-    text = text.rsplit("State: TBD", 1)
-    text = "State: it works.".join(text)
-    # body text may mention TBD without being a placeholder (found live 2026-09-19)
-    text = text.replace("State: it works.", "Replaced the TBD placeholders.\nState: it works.")
-    log.write_text(text, encoding="utf-8")
-    rc, out, err = run_hook("stop.py", {"session_id": "s3", "cwd": str(repo)}, home)
-    check("stop: passes after headline+State filled", rc == 0, err)
-
-    (repo / "second.md").write_text("x\n", encoding="utf-8")
-    run_hook("post_tool_use.py",
-              {"session_id": "s3", "cwd": str(repo),
-               "tool_input": {"file_path": str(repo / "second.md")}}, home)
-    rc, out, err = run_hook("stop.py", {"session_id": "s3", "cwd": str(repo)}, home)
-    new_text = log.read_text(encoding="utf-8")
-    check("stop: second edit merges Docs:, no second heading",
-          new_text.count("— fixed the thing") == 1 and "second.md" in new_text, rc)
-
-    (repo / "scratch-only-2.md").write_text("x\n", encoding="utf-8")
-    write_session(home, "s4", {"files": ["scratch-only-2.md"], "pending": False})
-    for i in range(3):
-        rc, out, err = run_hook("stop.py", {"session_id": "s4", "cwd": str(repo)}, home)
-        check(f"stop: retry {i+1} blocks", rc == 2, err)
-    rc, out, err = run_hook("stop.py", {"session_id": "s4", "cwd": str(repo)}, home)
-    check("stop: gives up after MAX_RETRIES", rc == 0)
-    check("stop: giving-up text names unverified", "entry passed unverified" in err, err)
-
-
-def test_stop_drift(base):
-    repo = make_scratch_repo(base)
-    home = base / "home_drift"
-    checker = repo / "scripts" / "tools" / "check_docs.py"
-    checker.write_text(checker.read_text(encoding="utf-8") + "# drifted\n", encoding="utf-8")
-    (repo / "scratch-only.md").write_text("x\n", encoding="utf-8")
-
-    write_session(home, "d1", {"files": ["scratch-only.md"], "pending": False})
-    rc, out, err = run_hook("stop.py", {"session_id": "d1", "cwd": str(repo)}, home)
-    check("stop: drift note in block reason", "differs from the plugin's" in err, err)
-    rc, out, err = run_hook("stop.py", {"session_id": "d1", "cwd": str(repo)}, home)
-    check("stop: drift note repeats on second block, ungated",
-          "differs from the plugin's" in err, err)
-
-
-def test_stop_wrapped_state(base):
-    repo = make_scratch_repo(base)
-    home = base / "home_wrap"
-    log = log_path(repo)
-    today = __import__("datetime").date.today().isoformat()
-    log.write_text(
-        log.read_text(encoding="utf-8").rstrip("\n") + "\n\n"
-        f"## {today} — earlier entry\n\nDecisions: none\nDocs: other.md\n"
-        "State: line one\nwraps onto a second line here.\n",
-        encoding="utf-8",
-    )
-    write_session(home, "wrap-sess", {"files": ["README.md"], "pending": False})
-    run_hook("stop.py", {"session_id": "wrap-sess", "cwd": str(repo)}, home)
-    text = log.read_text(encoding="utf-8")
-    check("stop: wrapped State: removed whole, no orphan continuation",
-          "wraps onto a second line here." not in text, text[-400:])
-
-
-def test_stop_adopts_entry(base):
-    repo = make_scratch_repo(base)
-    home = base / "home_adopt"
-    log = log_path(repo)
-    today = __import__("datetime").date.today().isoformat()
-    text = log.read_text(encoding="utf-8")
-    same_date = sum(1 for _ in __import__("re").finditer(
-        rf"^## {today}(?: \((\d+)\))? [—-] .+$", text, __import__("re").M))
-    n = same_date + 1 if same_date else None
-    heading = f"## {today}" + (f" ({n})" if n else "") + " — hand-written entry"
-    # DEF-27: only the log's last entry may carry State: - a hand-written new entry
-    # gives up the old one, same as a real editor would.
-    log_lines = text.splitlines()
-    for i in range(len(log_lines) - 1, -1, -1):
-        if log_lines[i].startswith("State:"):
-            del log_lines[i]
-            break
-    text = "\n".join(log_lines) + "\n"
-    log.write_text(
-        text.rstrip("\n") + "\n\n" + heading +
-        "\n\nDocs: were reorganised in this session; see below.\n\n"
-        "Decisions: none\nDocs: README.md\nState: something true.\n",
-        encoding="utf-8",
-    )
-
-    write_session(home, "adopt1", {"files": ["README.md", "CLAUDE.md"], "pending": False})
-    rc, out, err = run_hook("stop.py", {"session_id": "adopt1", "cwd": str(repo)}, home)
-    new_text = log.read_text(encoding="utf-8")
-    check("stop: adopts today's hand-written entry instead of stubbing",
-          rc == 0 and new_text.count(heading) == 1 and "CLAUDE.md" in new_text
-          and "— TBD" not in new_text, (rc, err, new_text[-300:]))
-    check("stop: DEF-26 - real Docs: field updated, not the prose line",
-          "Docs: CLAUDE.md, README.md" in new_text
-          and "Docs: were reorganised in this session; see below." in new_text,
-          new_text[-400:])
-    sess = load_session(home, "adopt1")
-    check("stop: session bound to adopted entry",
-          sess and sess.get("entry_date") == today and sess.get("entry_n") == n, sess)
-
-    home2 = base / "home_adopt2"
-    write_session(home2, "adopt2", {"files": ["unrelated.md"], "pending": False})
-    rc, out, err = run_hook("stop.py", {"session_id": "adopt2", "cwd": str(repo)}, home2)
-    text2 = log.read_text(encoding="utf-8")
-    check("stop: no-overlap same-day entry still gets a stub", rc == 2 and "— TBD" in text2, (rc, text2[-300:]))
-
-
-def test_precompact(base):
-    repo = make_scratch_repo(base)
-    home = base / "home3"
-    write_session(home, "p1", {"files": ["scratch-only.md"]})
-    rc, out, err = run_hook("pre_compact.py", {"session_id": "p1", "cwd": str(repo)}, home)
-    check("precompact: exit 0", rc == 0)
-    sess = load_session(home, "p1")
-    check("precompact: pending true", sess["pending"] is True, sess)
-    text = log_path(repo).read_text(encoding="utf-8")
-    check("precompact: creates entry", "Docs: scratch-only.md" in text, text[-200:])
-
-    (repo / "second.md").write_text("x\n", encoding="utf-8")
-    sess["files"] = ["second.md"]
-    write_session(home, "p1", sess)
-    run_hook("pre_compact.py", {"session_id": "p1", "cwd": str(repo)}, home)
-    text = log_path(repo).read_text(encoding="utf-8")
-    check("precompact: merges into existing today entry, no new heading",
-          text.count("— TBD") == 1 and "second.md" in text)
+    (repo / "skills" / "repo-clean" / "scripts" / "check_docs.py").write_text(
+        "raise RuntimeError('boom')\n", encoding="utf-8")
+    state = base / "state_broken"
+    edit(state, "bc1", repo, repo / "README.md")
+    rc, out, err = stop(state, "bc1", repo)
+    check("stop: broken checker blocks without a traceback",
+          rc == 2 and "Traceback" not in err, (rc, out, err))
 
 
 def test_session_start(base):
     repo = make_scratch_repo(base)
-    home = base / "home4"
+    state = base / "state_ss"
+    from _lib import last_field, last_state_line, NEXT_RE
 
-    rc, out, err = run_hook("session_start.py", {"session_id": "a1", "cwd": str(repo)}, home)
-    from _lib import last_state_line  # noqa: reuse the real helper to compute expectation
-    check("session_start: prints State:", out.strip() == last_state_line(repo), out)
+    rc, out, err = run_hook("session_start.py", {"session_id": "a1", "cwd": str(repo),
+                                                 "source": "startup"}, state)
+    # The scratch repo is a legacy home (CLAUDE.md + docs/log/, no .repo-clean marker
+    # yet), so the first session here also gets the one-shot migrate hint (D-018).
+    check("session_start: legacy home gets the migrate hint", "init --migrate" in out, out)
+    check("session_start: prints State: and Next:",
+          last_state_line(repo) in out and last_field(repo, NEXT_RE) in out, out)
+    check("session_start: nothing to fold in a fresh home", "not yet folded" not in out, out)
+    rc, out2, _ = run_hook("session_start.py", {"session_id": "a2", "cwd": str(repo),
+                                                "source": "startup"}, state)
+    check("session_start: migrate hint silent second time", "init --migrate" not in out2, out2)
 
-    no_setup_home = base / "home5"
+    stop(state, "earlier1", repo)
+    stop(state, "earlier2", repo)
+    ss = lambda sid, source: run_hook("session_start.py", {"session_id": sid, "cwd": str(repo),
+                                                           "source": source}, state)[1]
+    out = ss("new1", "startup")
+    check("session_start: names un-folded sessions at startup",
+          "2 earlier session(s) not yet folded" in out and "fold.py" in out, out)
+    for source in ("resume", "clear", "compact"):
+        check(f"session_start: no fold-in on {source}", "not yet folded" not in ss("x", source))
+
+    rc, out, err = run_hook("fold.py", None, state, input_text="", args=("list", str(repo)))
+    check("fold list: lists both", rc == 0 and "earlier1" in out and "earlier2" in out, (out, err))
+    ids = out.rsplit('" ', 1)[1].split()  # the `done` line's id@ts pairs
+    stop(state, "late", repo)  # stops between list and done, so never listed
+    rc, _, err = run_hook("fold.py", None, state, input_text="", args=("done", str(repo), *ids),
+                          extra_env={"CLAUDE_CODE_SESSION_ID": "folder"})
+    check("fold done: exits 0", rc == 0, err)
+    check("session_start: DEF-34 - a session that stopped mid-fold-in is still waiting",
+          "1 earlier session(s) not yet folded" in ss("new2", "startup"))
+    stop(state, "folder", repo)
+    check("session_start: DEF-33 - the folding session does not come back",
+          "1 earlier session(s) not yet folded" in ss("new2b", "startup"))
+    stop(state, "earlier1", repo)
+    check("session_start: a folded session that kept working comes up again",
+          "2 earlier session(s) not yet folded" in ss("new3", "startup"))
+
+    readme = repo / "README.md"
+    readme.write_text(readme.read_text(encoding="utf-8") + "\nSee `docs/GONE.md`.\n",
+                      encoding="utf-8")
+    out = ss("new4", "resume")
+    check("session_start: prints a checker finding", "checker found problems" in out, out)
+
+    arrow = make_home(base, "arrow home")  # a → in State: must not crash on a cp1252 console
+    rc, out, err = run_hook("session_start.py", {"session_id": "ar1", "cwd": str(arrow),
+                                                 "source": "startup"}, base / "state_arrow")
+    check("session_start: an arrow in the log exits 0 and prints the State line",
+          rc == 0 and "ok → next" in out, (rc, out, err))
+
     unset_repo = base / "réviser projet sans config"
-    shutil.copytree(repo, unset_repo)
-    (unset_repo / "CLAUDE.md").unlink()
-    rc, out1, _ = run_hook("session_start.py", {"session_id": "b1", "cwd": str(unset_repo)},
-                            no_setup_home)
-    rc, out2, _ = run_hook("session_start.py", {"session_id": "b2", "cwd": str(unset_repo)},
-                            no_setup_home)
-    check("session_start: setup offer fires once", "init" in out1)
+    unset_repo.mkdir()
+    ns = base / "state_ss_nosetup"
+    _, out1, _ = run_hook("session_start.py", {"session_id": "b1", "cwd": str(unset_repo)}, ns)
+    _, out2, _ = run_hook("session_start.py", {"session_id": "b2", "cwd": str(unset_repo)}, ns)
+    check("session_start: setup offer fires once", "init" in out1, out1)
     check("session_start: setup offer silent second time", out2.strip() == "", out2)
 
-    orphan_home = base / "home6"
-    from _lib import normalize_cwd
-    norm = normalize_cwd(repo)
-    now = time.time()
 
-    write_session(orphan_home, "old_same_cwd", {"files": ["orphan.py"], "cwd": norm})
-    os.utime(session_file(orphan_home, "old_same_cwd"), (now - 3 * 3600, now - 3 * 3600))
+def test_find_home(base):
+    """D-018: the marker, the walk-up, the no-home glob, and the legacy fallback."""
+    from _lib import find_home, find_homes_nearby
 
-    other_repo = base / "other"
-    other_repo.mkdir()
-    write_session(orphan_home, "old_other_cwd",
-                  {"files": ["x.py"], "cwd": normalize_cwd(other_repo)})
-    os.utime(session_file(orphan_home, "old_other_cwd"), (now - 3 * 3600, now - 3 * 3600))
+    repo = make_scratch_repo(base).resolve()
+    (repo / ".repo-clean").write_text("", encoding="utf-8")
+    home, legacy = find_home(repo)
+    check("find_home: marker at cwd is a home", home == repo and not legacy, (home, legacy))
+    home, legacy = find_home(repo / "docs" / "log")
+    check("find_home: walks up from a subfolder to the marker", home == repo, home)
 
-    write_session(orphan_home, "recent_same_cwd", {"files": ["recent.py"], "cwd": norm})
-    os.utime(session_file(orphan_home, "recent_same_cwd"), (now - 600, now - 600))
+    legacy_repo = make_scratch_repo(base).resolve()  # no marker: CLAUDE.md + docs/log/ only
+    home, legacy = find_home(legacy_repo)
+    check("find_home: legacy home (no marker) still resolves", home == legacy_repo and legacy,
+          (home, legacy))
 
-    write_session(orphan_home, "ancient", {"files": ["a.py"], "cwd": normalize_cwd(other_repo)})
-    os.utime(session_file(orphan_home, "ancient"), (now - 8 * 24 * 3600, now - 8 * 24 * 3600))
+    empty = base / "empty-no-home"
+    empty.mkdir()
+    home, legacy = find_home(empty)
+    check("find_home: no home above an unrelated empty folder",
+          home is None or home not in (repo, legacy_repo), home)
 
-    write_session(orphan_home, "day_old", {"files": ["b.py"], "cwd": normalize_cwd(other_repo)})
-    os.utime(session_file(orphan_home, "day_old"), (now - 1 * 24 * 3600, now - 1 * 24 * 3600))
+    root = base / "shared-root"
+    for n in ("proj-a", "proj-b", "proj-c", "proj-d"):
+        make_home(root, n)
+    old = make_home(root / "group", "proj-old")
+    (old / ".repo-clean").unlink()  # pre-marker home, two levels down
+    nearby = find_homes_nearby(root)
+    check("find_homes_nearby: markers and pre-marker homes, two levels down",
+          {p.name for p in nearby} == {"proj-a", "proj-b", "proj-c", "proj-d", "proj-old"}, nearby)
 
-    rc, out, err = run_hook("session_start.py", {"session_id": "current", "cwd": str(repo)},
-                             orphan_home)
-    cur = load_session(orphan_home, "current")
-    check("session_start: orphan same cwd >2h merged", "orphan.py" in (cur or {}).get("files", []))
-    check("session_start: orphan same cwd >2h file removed",
-          not session_file(orphan_home, "old_same_cwd").exists())
-    check("session_start: orphan different cwd untouched",
-          session_file(orphan_home, "old_other_cwd").exists())
-    check("session_start: 10-min-old same-cwd session untouched",
-          session_file(orphan_home, "recent_same_cwd").exists())
-    check("session_start: 8-day-old file pruned",
-          not session_file(orphan_home, "ancient").exists())
-    check("session_start: 1-day-old file kept",
-          session_file(orphan_home, "day_old").exists())
-    check("session_start: carryover message printed", "Carried" in out, out)
-
-
-def test_session_start_drift(base):
-    repo = make_scratch_repo(base)
-    checker = repo / "scripts" / "tools" / "check_docs.py"
-
-    home = base / "home_drift1"
-    rc, out, err = run_hook("session_start.py", {"session_id": "u1", "cwd": str(repo)}, home)
-    check("session_start: no drift line for unchanged scratch repo", "Checker differs" not in out, out)
-
-    checker.write_text(checker.read_text(encoding="utf-8") + "# drifted\n", encoding="utf-8")
-    home = base / "home_drift2"
-    rc, out, err = run_hook("session_start.py", {"session_id": "u2", "cwd": str(repo)}, home)
-    check("session_start: drift message present", "Checker differs" in out, out)
-    check("session_start: same version, different bytes", "same version, different bytes" in out, out)
-    check("session_start: tells the user not to overwrite", "Do not overwrite" in out, out)
-    rc, out2, err = run_hook("session_start.py", {"session_id": "u2", "cwd": str(repo)}, home)
-    check("session_start: drift message suppressed on repeat", "Checker differs" not in out2, out2)
-
-    checker.write_text(
-        checker.read_text(encoding="utf-8").replace('CORE_VERSION = "1.4.0"', 'CORE_VERSION = "0.9.0"'),
-        encoding="utf-8",
-    )
-    home = base / "home_drift3"
-    rc, out, err = run_hook("session_start.py", {"session_id": "u3", "cwd": str(repo)}, home)
-    check("session_start: behind direction", "behind" in out, out)
-
-    checker.write_text(
-        checker.read_text(encoding="utf-8").replace('CORE_VERSION = "0.9.0"', 'CORE_VERSION = "garbage"'),
-        encoding="utf-8",
-    )
-    home = base / "home_drift4"
-    rc, out, err = run_hook("session_start.py", {"session_id": "u4", "cwd": str(repo)}, home)
-    check("session_start: unknown direction exits 0", rc == 0, (out, err))
-    check("session_start: unknown direction in message", "unknown" in out, out)
-    check("session_start: no traceback on stderr", "Traceback" not in err, err)
-
-    checker.write_text(
-        re.sub(r'^CORE_VERSION = .*\n', '', checker.read_text(encoding="utf-8"), flags=re.M),
-        encoding="utf-8",
-    )
-    home = base / "home_drift4b"
-    rc, out, err = run_hook("session_start.py", {"session_id": "u4b", "cwd": str(repo)}, home)
-    check("session_start: no parseable CORE_VERSION doesn't render None", "None+" not in out, out)
-    check("session_start: no parseable CORE_VERSION renders ?", "?+" in out, out)
-    check("session_start: no parseable CORE_VERSION is unknown direction", "unknown" in out, out)
-
-
-def test_session_start_unreadable_checker(base):
-    repo = make_scratch_repo(base)
-    checker = repo / "scripts" / "tools" / "check_docs.py"
-    checker.unlink()
-    checker.mkdir()  # exists() passes, read_bytes() raises OSError
-
-    home = base / "home_drift5"
-    rc, out, err = run_hook("session_start.py", {"session_id": "u5", "cwd": str(repo)}, home)
-    check("session_start: unreadable checker exits 0, no traceback",
-          rc == 0 and "Traceback" not in err, (rc, out, err))
-
-
-def test_bad_input(base):
-    repo = make_scratch_repo(base)
-    home = base / "home_bad"
-    for hook in ("post_tool_use.py", "stop.py", "pre_compact.py", "session_start.py"):
-        rc, out, err = run_hook(hook, None, home, input_text="")
-        check(f"{hook}: empty stdin exits 0", rc == 0, (out, err))
-        rc, out, err = run_hook(hook, None, home, input_text="not json{{{")
-        check(f"{hook}: non-JSON stdin exits 0", rc == 0, (out, err))
-        rc, out, err = run_hook(hook, None, home, input_text=json.dumps({"foo": "bar"}))
-        check(f"{hook}: missing keys exits 0", rc == 0, (out, err))
-
-
-def fake_cache(base):
-    """A fake $HOME with two plugin cache version dirs, whose check_docs.py stubs differ
-    only in exit code - so a run that picks 10.0.0 (numeric order) is distinguishable
-    from one that picks 9.0.0 (lexical order)."""
-    home = base / "fakehome"
-    root = home / ".claude" / "plugins" / "cache" / "repo-clean" / "repo-clean"
-    for version, code in (("9.0.0", 1), ("10.0.0", 0)):
-        d = root / version / "skills" / "repo-clean" / "scripts"
-        d.mkdir(parents=True)
-        (d / "check_docs.py").write_text(f"import sys; sys.exit({code})\n", encoding="utf-8")
-    return home
+    state = base / "state_shared_root"
+    rc, out, _ = run_hook("session_start.py", {"session_id": "sr0", "cwd": str(root),
+                                               "source": "startup"}, state)
+    check("session_start: above homes with nothing to fold, names them", "proj-a" in out, out)
+    for n in ("proj-a", "proj-b", "proj-c", "proj-d"):
+        stop(state, f"w-{n}", root / n)
+    rc, out, _ = run_hook("session_start.py", {"session_id": "sr1", "cwd": str(root),
+                                               "source": "startup"}, state)
+    check("session_start: above homes, one line with count, three names and N more",
+          "4 home(s)" in out and "and 1 more" in out and out.count("\n") == 1, out)
 
 
 def test_plugin_core(base):
+    """The checker runs from the hook's own plugin folder, never the highest-numbered
+    version in the plugin cache (a stray 9.9.9 folder once shadowed every release)."""
     repo = make_scratch_repo(base)
-    home = base / "home_plugincore"
-    fake_home = fake_cache(base)
-
-    template = (repo / "skills" / "repo-clean" / "scripts" / "pre-commit").read_text(encoding="utf-8")
-    (repo / "scripts" / "hooks" / "pre-commit").write_text(template, encoding="utf-8")
-    (repo / "scripts" / "tools" / "check_docs.py").write_text("import sys; sys.exit(1)\n", encoding="utf-8")
+    (repo / "skills" / "repo-clean" / "scripts" / "check_docs.py").unlink()
+    fake_home = base / "fakehome"
+    d = (fake_home / ".claude" / "plugins" / "cache" / "repo-clean" / "repo-clean" / "99.0.0"
+         / "skills" / "repo-clean" / "scripts")
+    d.mkdir(parents=True)
+    (d / "check_docs.py").write_text("print('stub ran'); raise SystemExit(1)\n", encoding="utf-8")
     env = {"HOME": str(fake_home), "USERPROFILE": str(fake_home)}
-
-    rc, out, err = run_hook("session_start.py", {"session_id": "pc1", "cwd": str(repo)}, home,
-                             extra_env=env)
-    check("plugin core: no 'differs from the plugin's' line", "Checker differs" not in out, out)
-    check("plugin core: fallback drift reported", "Fallback" in out, out)
-    rc2, out2, err2 = run_hook("session_start.py", {"session_id": "pc1b", "cwd": str(repo)}, home,
-                                extra_env=env)
-    check("plugin core: drift message silent on repeat", "Fallback" not in out2, out2)
-
-    (repo / "scratch-only.md").write_text("x\n", encoding="utf-8")
-    write_session(home, "pc2", {"files": ["scratch-only.md"], "pending": False})
-    log = log_path(repo)
-    today = __import__("datetime").date.today().isoformat()
-    heading = f"## {today} — plugin core adoption"
-    log.write_text(
-        log.read_text(encoding="utf-8").rstrip("\n") + "\n\n" + heading +
-        "\n\nDecisions: none\nDocs: scratch-only.md\nState: something true.\n",
-        encoding="utf-8",
-    )
-    rc, out, err = run_hook("stop.py", {"session_id": "pc2", "cwd": str(repo)}, home,
-                             extra_env=env)
-    check("plugin core: stop exits 0 (10.0.0 stub ran, adopted entry)", rc == 0, err)
-
-    (repo / "scratch-only-2.md").write_text("x\n", encoding="utf-8")
-    write_session(home, "pc3", {"files": ["scratch-only-2.md"], "pending": False})
-    rc, out, err = run_hook("stop.py", {"session_id": "pc3", "cwd": str(repo)}, home,
-                             extra_env=env)
-    check("plugin core: stub path blocks on TBD", rc == 2, err)
-    check("plugin core: block reason has no plugin-drift note",
-          "differs from the plugin's" not in err, err)
-
-    sh = shutil.which("sh") or shutil.which("bash")
-    if sh is None:
-        print("skip: plugin-core pre-commit test (no sh/bash on PATH)")
-        return
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
-    pc_env = dict(os.environ)
-    pc_env["PYTHONIOENCODING"] = "utf-8"
-    pc_env["HOME"] = str(fake_home)
-    out = subprocess.run([sh, str(repo / "scripts" / "hooks" / "pre-commit")],
-                          cwd=repo, capture_output=True, text=True, encoding="utf-8", env=pc_env)
-    check("plugin core: pre-commit picks 10.0.0 numerically, exits 0",
-          out.returncode == 0, out.stdout + out.stderr)
-
-    empty_home = base / "emptyhome"
-    empty_home.mkdir()
-    pc_env["HOME"] = str(empty_home)
-    out = subprocess.run([sh, str(repo / "scripts" / "hooks" / "pre-commit")],
-                          cwd=repo, capture_output=True, text=True, encoding="utf-8", env=pc_env)
-    check("plugin core: no cache falls back to vendored copy, exits nonzero",
-          out.returncode != 0, out.stdout + out.stderr)
+    state = base / "state_plugincore"
+    run_hook("post_tool_use.py", {"session_id": "pc1", "cwd": str(repo),
+                                  "tool_input": {"file_path": str(repo / "README.md")}},
+             state, extra_env=env)
+    rc, out, err = run_hook("stop.py", {"session_id": "pc1", "cwd": str(repo)}, state,
+                            extra_env=env)
+    check("plugin core: a higher cached version does not change which checker runs",
+          rc == 0 and "stub ran" not in err, (rc, err))
 
 
-def test_pre_commit(base):
-    repo = make_scratch_repo(base)
-    sh = shutil.which("sh") or shutil.which("bash")
-    if sh is None:
-        print("skip: pre-commit test (no sh/bash on PATH)")
-        return
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
-    (repo / "docs" / "bad.md").write_text("# bad\n## TODO\nnope\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    env = dict(os.environ)
-    env["PYTHONIOENCODING"] = "utf-8"
-    out = subprocess.run([sh, str(repo / "scripts" / "hooks" / "pre-commit")],
-                          cwd=repo, capture_output=True, text=True, encoding="utf-8", env=env)
-    check("pre-commit: exits non-zero on banned header", out.returncode != 0, out.stdout + out.stderr)
+def test_fold_read(base):
+    """P3: the transcript reader keeps words and edited paths, drops tool output."""
+    t = base / "t.jsonl"
+    lines = [
+        {"type": "user", "message": {"content": "fix the chart <system-reminder>noise</system-reminder>"}},
+        {"type": "assistant", "message": {"content": [
+            {"type": "thinking", "thinking": "secret"},
+            {"type": "text", "text": "Fixed the axis."},
+            {"type": "tool_use", "name": "Edit", "input": {"file_path": "C:/p/chart.R"}},
+            {"type": "tool_use", "name": "Bash", "input": {"command": "select * from patients"}}]}},
+        {"type": "user", "message": {"content": [
+            {"type": "tool_result", "content": "MRN 12345"}]}},
+        {"type": "assistant", "isSidechain": True, "message": {"content": [
+            {"type": "text", "text": "subagent chatter"}]}},
+    ]
+    t.write_text("\n".join(json.dumps(x) for x in lines) + "\nnot json\n", encoding="utf-8")
+    rc, out, err = run_hook("fold.py", None, base / "state_fold", input_text="",
+                            args=("read", str(t)))
+    check("fold read: user and Claude words, edited paths",
+          rc == 0 and "[user] fix the chart" in out and "[claude] Fixed the axis." in out
+          and "[edited] C:/p/chart.R" in out, (out, err))
+    check("fold read: no tool output, commands, thinking, side chains or reminders",
+          not any(s in out for s in ("MRN", "patients", "secret", "subagent", "noise")), out)
+
+    (base / "empty.jsonl").write_text('{"type": "summary"}\n', encoding="utf-8")
+    rc, _, err = run_hook("fold.py", None, base / "state_fold", input_text="",
+                          args=("read", str(base / "empty.jsonl")))
+    check("fold read: recognizes nothing - exits 1 and says so",
+          rc == 1 and "recognized nothing" in err, (rc, err))
+    rc, _, err = run_hook("fold.py", None, base / "state_fold", input_text="",
+                          args=("read", str(base / "gone.jsonl")))
+    check("fold read: expired transcript - exits 1, says detail was lost",
+          rc == 1 and "detail was lost" in err, (rc, err))
+
+
+def test_bad_input(base):
+    state = base / "state_bad"
+    for hook in ("post_tool_use.py", "stop.py", "session_start.py"):
+        for text in ("", "not json{{{", json.dumps({"foo": "bar"}), "[1, 2]"):
+            rc, out, err = run_hook(hook, None, state, input_text=text)
+            check(f"{hook}: bad stdin {text[:8]!r} exits 0", rc == 0, (out, err))
+
+
+def test_check_docs_no_home(base):
+    """3a: `check_docs.py --root` on a folder that is neither markered nor the legacy
+    CLAUDE.md + docs/log/ layout says so and exits 0, instead of checking it as if it were
+    a repo-clean home."""
+    tmp = base / "no-home-folder"
+    tmp.mkdir()
+    (tmp / "somefile.txt").write_text("x\n", encoding="utf-8")
+    core = REPO_ROOT / "skills" / "repo-clean" / "scripts" / "check_docs.py"
+    out = subprocess.run([sys.executable, str(core), "--root", str(tmp)],
+                          capture_output=True, text=True, encoding="utf-8")
+    check("check_docs.py --root: no home says so and exits 0",
+          out.returncode == 0 and "no repo-clean home" in out.stdout, out.stdout + out.stderr)
 
 
 def main():
@@ -500,16 +368,13 @@ def main():
         base = Path(tmp)
         test_post_tool_use(base)
         test_stop(base)
-        test_stop_wrapped_state(base)
-        test_stop_adopts_entry(base)
-        test_stop_drift(base)
-        test_precompact(base)
+        test_stop_broken_checker(base)
         test_session_start(base)
-        test_session_start_drift(base)
-        test_session_start_unreadable_checker(base)
-        test_bad_input(base)
-        test_pre_commit(base)
+        test_find_home(base)
         test_plugin_core(base)
+        test_fold_read(base)
+        test_bad_input(base)
+        test_check_docs_no_home(base)
 
     if _FAILURES:
         print(f"\n{len(_FAILURES)} failure(s):", file=sys.stderr)

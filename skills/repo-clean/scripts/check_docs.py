@@ -14,17 +14,22 @@ and in output):
                          (every id in Supersedes:/Superseded-by: is checked, not just
                          the first).
   log-fields-resolve    docs/log/*.md 'Decisions:'/'Docs:' fields resolve to real ids/
-                         paths; a field's value may wrap onto following lines.
-  date-stamped-filenames No date-stamped filename under docs/ outside the exempt dirs.
+                         real .md paths; a field's value may wrap onto following lines.
+                         Only .md targets are checked (D-016(b)) - a missing dated output
+                         file or a renamed script is routine, not a broken doc link.
   outside-repo-paths    No out-of-repo path in a living doc. The default catches Windows
                          drive paths, ~, /home, /Users, /root, and Git Bash /<letter>/Users
                          or /<letter>/home; widen outside_path_re for others (e.g. /opt).
-  paths-exist           Backtick-quoted repo paths in living docs must exist, checked
+  paths-exist           Backtick-quoted .md paths in living docs must exist, checked
                          case-exactly regardless of OS; a trailing '/' requires a directory.
-  banned-headers        No TODO/Next Steps/Future Work headers outside the decisions file.
+                         Non-.md targets (scripts, data, generated output) are not checked
+                         (D-016(b)).
+  banned-headers        No 'Next Steps'-style header anywhere but the decisions file -
+                         next steps live only in the current log entry's Next: field
+                         (D-016(c)); narrowed from TODO/Next Steps/Future Work by D-017.
   diary-grammar         Log heading grammar (including the (N) numbering convention),
                          required fields, only the log's last entry, across period files,
-                         carries State:.
+                         carries State: and Next: - and it must carry both (D-016(c)).
   archive-banner-paths  Archive disposition banner lines (blockquote lines only, wrapped
                          '>' lines joined) cite real, in-repo paths, searched recursively.
   open-questions-sync   Open-questions table <-> Status: open entries, Revisit: required.
@@ -32,7 +37,6 @@ and in output):
                          (table rows only, a leading './' normalized).
   research-fields       Research docs (searched recursively) carry Status:/Date: read from
                          real field lines, and a superseded one names what replaced it.
-  file-map-cap          The file-map doc (if configured) stays under its line cap.
 
 Fenced code blocks (```...```) are blanked before any rule reads a document, so an example
 heading or field name inside a fence is never mistaken for real content.
@@ -57,7 +61,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CORE_VERSION = "1.4.0"  # bump on any content change; core_digest() catches what this misses
+CORE_VERSION = "1.7.0"  # bump on any content change; core_digest() catches what this misses
 CONFIG_VERSION = 1
 
 
@@ -87,9 +91,7 @@ CONFIG = {
     "routing_file": "CLAUDE.md",
     "routing_exempt_topdirs": ("archive", "log", "research"),
     "research_dir": "docs/research",
-    "file_map": "docs/FILE_MAP.md",
-    "file_map_cap": 60,
-    "banned_header_re": r"^#+.*\b(TODO|Next Steps|Future Work)\b",
+    "banned_header_re": r"^#+.*\bNext Steps\b",
     "outside_path_re": (
         r"(?<![\w\\])[A-Za-z]:\\\w"          # drive letter, not the tail of a word
         r"|~[\\/]"                           # ~/ or ~\
@@ -204,10 +206,33 @@ class Ctx:
         return any(d in p.parents or d == p for d in self.exempt_dirs)
 
 
+def routed_docs(ctx):
+    """Every existing .md a routing-table row names (D-020) - a file the table calls
+    authoritative is one the model will trust, so it is one the checker reads."""
+    routing = ctx.root / (ctx.config["routing_file"] or "")
+    if not ctx.config["routing_file"] or not routing.is_file():
+        return []
+    out = []
+    for line in read_doc(routing).splitlines():
+        if line.strip().startswith("|"):
+            for span in re.findall(r"`([^`]+)`", line):
+                rel = span.strip()
+                rel = rel[2:] if rel.startswith("./") else rel
+                p = ctx.root / rel
+                if rel.endswith(".md") and exists_exact(ctx.root, rel) and not ctx.is_exempt(p):
+                    out.append(p)
+    return out
+
+
 def living_docs(ctx):
     files = [ctx.root / name for name in ctx.config["living_roots"] if (ctx.root / name).exists()]
     if ctx.docs:
         files += [p for p in ctx.docs.rglob("*.md") if not ctx.is_exempt(p)]
+    seen = {f.resolve() for f in files}
+    for p in routed_docs(ctx):
+        if p.resolve() not in seen:
+            seen.add(p.resolve())
+            files.append(p)
     return files
 
 
@@ -284,10 +309,11 @@ def candidate_path(ctx, token, known_roots):
 
 
 def docs_field_paths(ctx, value, known_roots):
-    """Tokens out of a `Docs:` field value that look confidently like repo paths. A
-    token without '/' must end in '.md' to count (a version number, section number,
-    or bare word is skipped); 'none', URLs, and Windows drive paths are always
-    skipped."""
+    """Tokens out of a `Docs:` field value that look confidently like paths to
+    documentation. Only a token ending in '.md' counts (D-016(b)): a version number,
+    section number, script, data file, or generated output is skipped, since a missing
+    dated output file or a renamed script is routine, not a broken doc link. 'none',
+    URLs, and Windows drive paths are always skipped."""
     out = []
     for raw in re.split(r"[,\s]+", value.strip()):
         tok = raw.strip().strip(".,;()")
@@ -297,11 +323,13 @@ def docs_field_paths(ctx, value, known_roots):
             continue
         if re.match(r"^[A-Za-z]:[\\/]", tok):
             continue
+        if not tok.lower().endswith(".md"):
+            continue
         if "/" in tok:
             c = candidate_path(ctx, tok, known_roots)
             if c:
                 out.append(c)
-        elif re.match(r"^[\w.\-]+\.md$", tok):
+        else:
             out.append(tok)
     return out
 
@@ -417,14 +445,6 @@ def check_log_fields_resolve(ctx, errors, docs):
                         errors.append(f"{log.name}: Docs: references missing {path}")
 
 
-def check_date_stamped_filenames(ctx, errors, docs):
-    if not ctx.docs or not ctx.docs.exists():
-        return
-    for p in ctx.docs.rglob("*.md"):
-        if not ctx.is_exempt(p) and DATE_RE.search(p.name):
-            errors.append(f"date-stamped filename outside exempt dirs: {p.relative_to(ctx.root)}")
-
-
 def check_outside_repo_paths(ctx, errors, docs):
     outside_re = ctx.config["outside_path_re"]
     if not outside_re:
@@ -438,6 +458,15 @@ def check_outside_repo_paths(ctx, errors, docs):
                 errors.append(f"{p.relative_to(ctx.root)}:{i}: absolute/outside-repo path in a living doc")
 
 
+def is_doc_target(s):
+    """True for a path this rule should still validate (D-016(b)): a markdown file, or
+    a markdown file's own directory-shaped mistake ('foo.md/'). False for a script, data
+    file, generated output, or plain directory reference - those are not documentation
+    links, and a missing one is routine."""
+    bare = s[:-1] if s.endswith(("/", "\\")) else s
+    return bare.lower().endswith(".md")
+
+
 def check_paths_exist(ctx, errors, docs):
     known_roots = top_level_names(ctx)
     for p in docs:
@@ -448,7 +477,7 @@ def check_paths_exist(ctx, errors, docs):
             for span in re.findall(r"`([^`]+)`", line):
                 for tok in path_tokens_from_span(span):
                     s = candidate_path(ctx, tok, known_roots)
-                    if s is None or s in seen:
+                    if s is None or s in seen or not is_doc_target(s):
                         continue
                     seen.add(s)
                     if not exists_exact(ctx.root, s):
@@ -538,14 +567,16 @@ def check_diary_grammar(ctx, errors, docs):
 
     if all_entries:
         name, heading, body = all_entries[-1]
-        if not parse_fields(body).get("State", "").strip():
-            errors.append(f"{name}: last entry '{heading.strip()}' missing a non-empty State: line")
+        for field in ("State", "Next"):
+            if not parse_fields(body).get(field, "").strip():
+                errors.append(f"{name}: last entry '{heading.strip()}' missing a non-empty {field}: line")
         for name, heading, body in all_entries[:-1]:
-            if parse_fields(body).get("State", "").strip():
-                errors.append(
-                    f"{name}: entry '{heading.strip()}' carries a State: line but is not the "
-                    "log's last entry - only the last entry holds current state; delete it"
-                )
+            for field in ("State", "Next"):
+                if parse_fields(body).get(field, "").strip():
+                    errors.append(
+                        f"{name}: entry '{heading.strip()}' carries a {field}: line but is not the "
+                        "log's last entry - only the last entry holds current state; delete it"
+                    )
 
 
 def check_archive_banner_paths(ctx, errors, docs):
@@ -637,18 +668,6 @@ def check_routing_coverage(ctx, errors, docs):
                                f"(no {NO_ROUTE_MARKER} or check-docs:ignore marker either)")
 
 
-def check_file_map_cap(ctx, errors, docs):
-    cfg = ctx.config
-    if not cfg["file_map"] or not cfg["file_map_cap"]:
-        return
-    p = ctx.root / cfg["file_map"]
-    if not p.exists():
-        return
-    n = len(read_doc(p).splitlines())
-    if n > cfg["file_map_cap"]:
-        errors.append(f"{cfg['file_map']}: {n} lines, over the {cfg['file_map_cap']}-line cap")
-
-
 def check_research_fields(ctx, errors, docs):
     """Research docs are rewritten in place, so nothing else reveals their age or whether
     they still apply. Status:/Date: is the only signal a reader (or the next agent) gets."""
@@ -677,7 +696,6 @@ def check_research_fields(ctx, errors, docs):
 GENERIC_RULES = (
     ("decisions-integrity", check_decisions_integrity),
     ("log-fields-resolve", check_log_fields_resolve),
-    ("date-stamped-filenames", check_date_stamped_filenames),
     ("outside-repo-paths", check_outside_repo_paths),
     ("paths-exist", check_paths_exist),
     ("banned-headers", check_banned_headers),
@@ -686,7 +704,6 @@ GENERIC_RULES = (
     ("open-questions-sync", check_open_questions_sync),
     ("routing-coverage", check_routing_coverage),
     ("research-fields", check_research_fields),
-    ("file-map-cap", check_file_map_cap),
 )
 
 
@@ -719,8 +736,8 @@ def local_module_dir(root):
 def load_local_module(ctx, internal_errors, local_dir=None):
     """Import check_docs_local.py from local_dir (default: local_module_dir(ctx.root))
     and apply its CONFIG overrides to ctx.config in place, before any rule runs - local
-    CONFIG overrides must be visible to the generic rules too (e.g. a lowered
-    file_map_cap). Returns the module, or None if there is no local file or it failed
+    CONFIG overrides must be visible to the generic rules too (e.g. a widened
+    status_vocab). Returns the module, or None if there is no local file or it failed
     to import (either way, safe to skip check() after)."""
     local_dir = local_dir or local_module_dir(ctx.root)
     local_path = local_dir / "check_docs_local.py"
@@ -760,9 +777,9 @@ def run_local_check(mod, ctx, errors, internal_errors):
         errors.extend(found)
 
 
-LOCAL_STARTER = '''"""Repo-specific docs rules for check_docs.py. Not overwritten when the core is re-synced
-(re-sync is `cp <plugin>/scripts/check_docs.py scripts/tools/check_docs.py` - it never
-touches this file).
+LOCAL_STARTER = '''"""Repo-specific docs rules for check_docs.py. The checker itself is never vendored
+into this repo (D-015): it runs from the plugin, and there is nothing to re-sync. This file
+is the one thing that lives here, and stays untouched by any plugin update.
 
 Bump CONFIG_VERSION here to match the core's CONFIG_VERSION after checking your CONFIG
 overrides still make sense against the new defaults; a mismatch is reported as an internal
@@ -784,7 +801,7 @@ Four ways to suppress a false positive - pick the narrowest one that fits:
 CONFIG_VERSION = 1
 
 # Override any core CONFIG key here, e.g.:
-# CONFIG = {"file_map_cap": 80}
+# CONFIG = {"status_vocab": ("active", "superseded", "open", "draft")}
 CONFIG = {}
 
 
@@ -822,6 +839,16 @@ def _resolve_root(root_arg):
         return Path.cwd()
 
 
+def _is_home(root):
+    """A repo-clean home (D-018): the `.repo-clean` marker, or - pre-marker - the legacy
+    layout (CLAUDE.md + docs/log/) find_home() in hooks/_lib.py also accepts. Mirrors that
+    function's per-candidate test; this checks only the given root, no walk-up, since the
+    caller (a hook, or a direct --root) already picked the folder to check."""
+    if (root / ".repo-clean").exists():
+        return True
+    return (root / "CLAUDE.md").exists() and (root / "docs" / "log").is_dir()
+
+
 def _build_arg_parser():
     parser = argparse.ArgumentParser(prog="check_docs.py", description="Docs hygiene checker.")
     parser.add_argument("--root", metavar="DIR", help="repo root to check (default: git toplevel, else cwd)")
@@ -856,6 +883,11 @@ def _main(argv):
     root = _resolve_root(args.root)
     if root is None:
         return 2
+
+    if not _is_home(root):
+        print(f"{root}: no repo-clean home here (no .repo-clean marker, and not a legacy "
+              "CLAUDE.md + docs/log/ layout); not checking")
+        return 0
 
     if args.init_config:
         target_dir = local_module_dir(root)
@@ -995,7 +1027,11 @@ def _selfcheck():
         "## D-011 — folded in, symmetric\n"
         "Status: superseded   Verdict: adopted   Superseded-by: D-010\n\n"
         "## D-012 — folded in, NOT symmetric (missing Superseded-by)\n"
-        "Status: superseded   Verdict: adopted\n",
+        "Status: superseded   Verdict: adopted\n\n"
+        # local CONFIG override demo: status_vocab is widened to include "draft" by
+        # check_docs_local.py below - this entry must be quiet only with that override.
+        "## D-500 — status_vocab override demo\n"
+        "Status: draft   Verdict: adopted\n",
         encoding="utf-8",
     )
     (tmp / "docs" / "archive" / "BANNER.md").write_text(
@@ -1020,7 +1056,9 @@ def _selfcheck():
         "| checker | `scripts/tools/check_docs.py --selfcheck` |\n\n"
         "See `docs/DOES_NOT_EXIST.md` and `C:\\Users\\x\\.claude\\plans\\p.md`.\n"
         "and a unix one `/home/me/notes.md`, and a Git Bash one `/c/Users/me/notes.md`.\n"
-        "## TODO later\n"
+        "## Next Steps later\n"
+        # D-017: TODO/Future Work headers are no longer banned, only Next Steps.
+        "## TODO no longer banned\n"
         "`docs/SUPPRESSED_MISSING.md` should not fire. <!-- check-docs: ignore paths-exist -->\n"
         # DEF-22 fire cases: wrong case, and a non-directory with a trailing slash.
         "Wrong case: `docs/Archive/BANNER.md`. Not a dir: `docs/archive/BANNER.md/`.\n"
@@ -1041,11 +1079,10 @@ def _selfcheck():
         "```markdown\n"
         "## D-999 — a fake decision heading inside a fence\n"
         "Status: nonsense\n"
-        "## TODO inside a fence\n"
+        "## Next Steps inside a fence\n"
         "```\n",
         encoding="utf-8",
     )
-    (tmp / "docs" / "FILE_MAP.md").write_text("\n".join(f"line {i}" for i in range(70)) + "\n", encoding="utf-8")
     (tmp / "docs" / "log" / "2099-01.md").write_text(
         "## 2099-01-01 — wrapped fields\n"
         "Decisions: D-999\n"
@@ -1060,7 +1097,7 @@ def _selfcheck():
         "Decisions: none\n"
         "Docs: none\n\n"
         "body text with an outside path C:\\Users\\x\\plan.md and a banned header below\n\n"
-        "## TODO later\n\n"
+        "## Next Steps later\n\n"
         "### 2098-02-02 old-style heading after the first '##' heading\n\n"
         "## 2098-01-01 — duplicate date and no N\n"
         "Docs: none\n"
@@ -1072,11 +1109,10 @@ def _selfcheck():
         "Docs: none\n",
         encoding="utf-8",
     )
-    (tmp / "docs" / "2099-01-01-scratch.md").write_text("x\n", encoding="utf-8")
     # a local file whose CONFIG overrides fire and whose check() finds one thing
     (tmp / "check_docs_local.py").write_text(
         "CONFIG_VERSION = 1\n"
-        "CONFIG = {\"file_map_cap\": 5}\n"
+        "CONFIG = {\"status_vocab\": (\"active\", \"superseded\", \"open\", \"draft\")}\n"
         "def check(root):\n"
         "    return [\"LOCAL: fixture finding\"]\n",
         encoding="utf-8",
@@ -1097,11 +1133,11 @@ def _selfcheck():
     # --- pre-existing must-fire assertions (adapted to new messages/names) ---------
     assert has("bad/missing Verdict"), found
     assert has("Docs:"), found
-    assert has("date-stamped"), found
     assert has("absolute/outside-repo path in a living doc"), found
     assert has("does not exist") and none_has("SUPPRESSED_MISSING"), found
     assert none_has("SUPPRESSED_MISSING"), found
     assert has("banned section"), found
+    assert not any("banned section" in e and "TODO" in e for e in found), found  # D-017: TODO no longer banned
     assert has("missing a Decisions:"), found
     assert has("missing a Docs:"), found
     assert has("missing a non-empty State:"), found
@@ -1113,7 +1149,7 @@ def _selfcheck():
     assert (has("missing from the Open questions table") or has("is not Status: open")), found
     assert has("no Revisit:"), found
     assert has("not referenced in"), found
-    assert has("over the 5-line cap"), found  # local CONFIG override fired
+    assert none_has("D-500", "bad/missing Status"), found  # local status_vocab override fired
     assert has("LOCAL: fixture finding"), found
     assert has("research/bad.md: bad/missing Status".replace("/", os.sep)) or has(
         "research", "bad.md", "bad/missing Status"), found
@@ -1139,10 +1175,10 @@ def _selfcheck():
     ctx_off = Ctx(tmp, dict(CONFIG))
     found_off = []
     mod_off = load_local_module(ctx_off, found_off, local_dir=tmp)
-    ctx_off.config["date-stamped-filenames"] = None
+    ctx_off.config["banned-headers"] = None
     found_off2 = []
     run_generic_rules(ctx_off, found_off2)
-    assert not any("date-stamped" in e for e in found_off2), found_off2
+    assert not any("banned section" in e for e in found_off2), found_off2
 
     # --- DEF-05 fire case: wrapped Docs: field, second line's missing file caught.
     assert has("more-missing.md"), found
@@ -1263,14 +1299,28 @@ def _selfcheck():
     found4 = []
     run_generic_rules(ctx4, found4)
     assert not any("State:" in e for e in found4), found4
+    # D-016(c): the last entry must carry Next: too.
+    assert any("missing a non-empty Next:" in e for e in found4), found4
 
+    with (tmp4 / "docs" / "log" / "2097-02.md").open("a", encoding="utf-8") as f:
+        f.write("Next: keep going\n")
     with (tmp4 / "docs" / "log" / "2097-01.md").open("a", encoding="utf-8") as f:
-        f.write("State: old\n")
+        f.write("State: old\nNext: old\n")
     found4b = []
     run_generic_rules(ctx4, found4b)
-    state_hits = [e for e in found4b if "carries a State:" in e]
-    assert len(state_hits) == 1, found4b
-    assert "2097-01.md" in state_hits[0], found4b
+    assert not any("missing a non-empty" in e for e in found4b), found4b
+    for field in ("State", "Next"):
+        hits = [e for e in found4b if f"carries a {field}:" in e]
+        assert len(hits) == 1 and "2097-01.md" in hits[0], found4b
+
+    # D-020: a .md the routing table names outside docs/ is read like any living doc.
+    (tmp4 / "sub").mkdir()
+    (tmp4 / "sub" / "README.md").write_text("See `docs/NOT_THERE.md`.\n", encoding="utf-8")
+    (tmp4 / "CLAUDE.md").write_text("| Q | A |\n|---|---|\n| sub | `sub/README.md` |\n",
+                                    encoding="utf-8")
+    found4c = []
+    run_generic_rules(ctx4, found4c)
+    assert any("README.md" in e and "NOT_THERE.md" in e for e in found4c), found4c
 
     shutil.rmtree(tmp4)
 

@@ -5,7 +5,12 @@ Migrate an existing, messy docs tree into the routing-table system. Never delete
 ## 1. Preconditions
 
 Require a **clean git working tree** (`git status` shows nothing to commit) before touching
-anything. If it's not clean, stop and ask the user to commit or stash first.
+anything. If it's not clean, stop and ask the user to commit or stash first — never do it
+for them. The pending changes are the user's work, often unrelated to the docs.
+
+Never commit, stash, stage, or change git settings (including `.gitignore`) at any step.
+Docs move with a plain file move (step 5), which git shows as a delete plus an untracked file
+until the user stages it.
 
 Record `HEAD` now — this is the rollback point for the whole run: `git rev-parse HEAD`.
 
@@ -29,18 +34,18 @@ per row, or an explicit "yes to all."** Do not proceed past this step without co
 ## 5. Apply — one working-tree transformation, no commits
 
 Once confirmed:
-- `git mv` superseded/duplicate docs into `docs/archive/`, prepending the banner:
+- Move superseded/duplicate docs into `docs/archive/` with a plain move (not `git mv`),
+  prepending the banner:
   `> **Archived YYYY-MM-DD.** Superseded by \`docs/X.md\` — rationale, not instruction.`
 - Rewrite survivors to remove what moved to the archive.
 - Update the routing table with the new/changed rows.
 - Add a log entry and, if any belief changed, a `D-NNN` entry.
 - Run the checker; it must reach 0.
 
-Apply all of this as **one uncommitted working-tree change** — don't commit between steps
-(that would fire the pre-commit hook on an intermediate, half-migrated state). Leave the
-result for the user to review and commit themselves.
+Apply all of this as **one uncommitted working-tree change**. Leave the result for the user
+to review and commit themselves.
 
-**On any `git mv` failure:** stop immediately. Report exactly what was applied so far, and
+**On any move failure:** stop immediately. Report exactly what was applied so far, and
 print the rollback command (step 7). Do not continue past a failed move.
 
 **On checker findings after all moves succeeded:** list them plainly. Offer the same
@@ -50,11 +55,13 @@ mechanical one.
 ## 6. Untracked files are never moved
 
 Untracked files are inventoried in step 2 but this command never touches them — a clean-tree
-precondition plus `git mv` can't act on something untracked, and `git reset --hard` won't
+precondition can't account for something untracked, and `git reset --hard` won't
 restore a manual move of one. If an untracked file needs to move, tell the user and let them
 `git add` + move it themselves.
 
 ## 7. Rollback
 
 Always: `git reset --hard <the HEAD recorded in step 1>`. State this command explicitly
-whenever offering rollback — don't make the user look it up.
+whenever offering rollback — don't make the user look it up. It restores the moved docs but
+leaves their new copies in `docs/archive/` as untracked files; name those so the user can
+delete them.

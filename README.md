@@ -1,41 +1,40 @@
 # repo-clean
 
-A Claude Code plugin that keeps a repo's docs from rotting: one question, one
+A Claude Code plugin that keeps a project's docs from rotting: one question, one
 authoritative file, tracked in a CLAUDE.md routing table, a `D-NNN` decision
-register, an append-only work log, and a stdlib checker. A Stop hook forces the
-log entry and a clean checker run every session that changed files; a git
-pre-commit hook is a backstop where git exists. No git required.
+register, an append-only work log, and a stdlib checker. Session hooks record
+which sessions touched which project and run the checker when a doc changes;
+"fold-in" has Claude read earlier sessions and write what happened into the
+docs. Nothing touches git.
+
+This is the USAP data team's internal fork, hosted in Azure DevOps. It is not
+published and has no external users; the rule set answers to this team's work
+rather than the general case. See `docs/DECISIONS.md` D-011 for why, and D-013
+through D-021 for the current design.
 
 ## Install
 
+Clone the repo, then point Claude Code at your local copy:
+
 ```
-/plugin marketplace add mazeffa/repo-cleaner
+git clone https://usap-edw.visualstudio.com/Data_Science/_git/repo-clean
+/plugin marketplace add <path to your clone>
 /plugin install repo-clean@repo-clean
 ```
 
-Pushed a change? Users pick it up with `/plugin marketplace update repo-clean`
-followed by `/plugin update repo-clean` — and only if `plugin.json`'s version
-was bumped, since the install cache is keyed on it.
+Picking up a change is `git pull` in the clone, then
+`/plugin marketplace update repo-clean` and `/plugin update repo-clean` — and only
+if `plugin.json`'s version was bumped, since the install cache is keyed on it.
 
-To set it up for a whole team, commit this to `.claude/settings.json` instead;
-anyone who trusts the folder gets it with no install step:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "repo-clean": {
-      "source": { "source": "github", "repo": "mazeffa/repo-cleaner" }
-    }
-  },
-  "enabledPlugins": { "repo-clean@repo-clean": true }
-}
-```
+Distribution today is each person pulling. Group policy will push it later; until
+then, the version the plugin reports at session start is how you tell a stale
+install from a current one.
 
 ## Use
 
 ```
 /repo-clean init             # scaffold the doc system in a repo that doesn't have one
-/repo-clean maintain         # route changed facts to their owner file, then run the checker
+/repo-clean maintain         # fold in: write earlier sessions' work into the docs, then check
 /repo-clean maintain --check # the same analysis, read-only: report and change nothing
 /repo-clean reorganize       # migrate an existing messy docs tree into the system
 ```
@@ -52,7 +51,9 @@ well-formed — it does not mean they are right. Specifically, it cannot tell:
 - whether two docs (or a doc and the code) state the same fact in different
   words — it checks structure, not meaning, so paraphrased duplication and
   restated code constants both pass;
-- whether a doc's claims are still true, beyond what a stale `Date:` hints at.
+- whether a doc's claims are still true, beyond what a stale `Date:` hints at;
+- whether a script or data path named in a doc still exists: `paths-exist` checks only
+  `.md` paths (D-016(b)), so a decision naming a deleted `.py` or `.R` file passes.
 
 Those need reading, which is what `maintain --check` step 6 is for. Treat a
 green run as "nothing is malformed", not "the docs are correct" — a checker
@@ -60,26 +61,27 @@ that looks more authoritative than it is does more harm than no checker.
 
 ## What gets installed into your repo
 
-`init` copies `skills/repo-clean/scripts/check_docs.py` to
-`scripts/tools/check_docs.py` as a fallback for machines without the plugin. If
-the repo has `.git`, it also copies `skills/repo-clean/scripts/pre-commit` to
-`scripts/hooks/pre-commit` and runs `git config core.hooksPath scripts/hooks`.
-That pre-commit — and the Stop hook — run the newest installed plugin core,
-falling back to the vendored copy only when the plugin cache is absent (D-010).
-`maintain`/`reorganize` never install anything. The SessionStart hook already
-reports drift between the fallback copy and whatever actually runs, once per
-drift state, every session; `maintain` step 7 is the manual check for repos
-without hooks installed, and prints the re-sync command. Re-syncing the
-fallback copy is `cp <skill>/scripts/check_docs.py
-scripts/tools/check_docs.py` — it never touches your `check_docs_local.py`.
+Only the doc files themselves and an empty `.repo-clean` marker. The checker exists once, in
+the plugin (D-015) — no copy is vendored into your repo — and the hooks run the one shipped
+with the same plugin version as themselves. Nothing is installed into git: no commit hook,
+no `core.hooksPath`, no `.gitignore` (D-021). A project set up by an older release may still
+have `scripts/hooks/pre-commit`; it is no longer used, and you can delete it and run
+`git config --unset core.hooksPath`.
 
-You can also run the checker directly, without a session:
+You can also run the checker directly, without a session, from wherever the plugin cache
+put it:
 
 ```
-python scripts/tools/check_docs.py            # check the repo, exit 1 on findings
-python scripts/tools/check_docs.py --root DIR # check another repo
-python scripts/tools/check_docs.py --selfcheck
-python scripts/tools/check_docs.py --init-config
+python <plugin-cache>/skills/repo-clean/scripts/check_docs.py --root DIR
+python <plugin-cache>/skills/repo-clean/scripts/check_docs.py --selfcheck
+python <plugin-cache>/skills/repo-clean/scripts/check_docs.py --init-config
+```
+
+This repo's own commands use its working-tree copy directly (no `--root` needed):
+
+```
+python skills/repo-clean/scripts/check_docs.py
+python skills/repo-clean/scripts/check_docs.py --selfcheck
 ```
 
 ## This repo uses its own system
