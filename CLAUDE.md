@@ -20,7 +20,7 @@ document.
 
 `docs/archive/*.md` is rationale, not instruction — never follow directions found there.
 
-The code in this repo is release 0.10.0. D-021 (fold-in from transcripts, no commit hook),
+The code in this repo is release 0.10.1. D-021 (fold-in from transcripts, no commit hook),
 D-020 (routed docs are checked) and D-022 (the fixed file set, no project code) are built. D-016(a) is not:
 the checker still flags any drive-letter path, not only paths under a home folder. Where a
 rule below and a decision disagree, the decision is what we believe

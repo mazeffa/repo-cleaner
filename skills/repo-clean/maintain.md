@@ -30,8 +30,8 @@ session-start line prints its full path.
    list too.
 2. `python <plugin>/hooks/fold.py read <home>` prints every listed session, oldest first: only
    what the user said, what Claude said, which files were edited, and the user's answers to
-   questions and plan prompts — and only what is newer than that session's last fold-in. It
-   pages: while it ends with a `-- more:` line, run the `--from N` command that line gives.
+   questions and plan prompts — and only what is newer than that session's last fold-in and
+   no newer than `list`'s run (later work waits for the next fold-in). It pages: while it ends with a `-- more:` line, run the `--from N` command that line gives.
    Work from what it prints. Open a tool's output or a query result only when you need one
    specific fact that lives there, never in bulk — query results can hold patient data.
 3. `read` reports a session whose transcript is gone (they expire, 30 days by default) or
@@ -115,6 +115,6 @@ raise them with the user, in `--check` mode just list them:
 ## 7. Record the fold-in
 
 Run `python <plugin>/hooks/fold.py done <home>`. It marks exactly the sessions `list` showed
-— and refuses until `read` has printed every one to the end — so a session that stopped during
+— and refuses (exit 3) until `read` has printed every one to the end — so a session that stopped during
 the fold-in still comes up next time, and this session doesn't. A session that keeps working
 afterwards comes up again. Skip in `--check` mode.

@@ -77,9 +77,11 @@ def main():
             save_session(home, sid, rec)
     sys.stdout.flush()  # the checker is the slow part; what's above survives a timeout
     code, text = run_checker(home)
-    if code != 0:
+    if code == 1:
         print(f"repo-clean: the checker found problems in this home - raise them before "
               f"other work:\n{text.strip()}")
+    elif code != 0:
+        print(f"repo-clean: the checker itself failed ({text.strip()}) - docs not checked")
     return 0
 
 

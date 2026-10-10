@@ -8,8 +8,9 @@ ever passes the project folder (HOME); no ids or timestamps to copy.
 
 `read` never prints tool output (belief 7): only text the user typed, text Claude wrote, the
 paths Claude edited, and the answers the user gave to AskUserQuestion/ExitPlanMode. It prints
-only what is newer than the session's last fold-in. A transcript that is gone or unreadable is
-reported and skipped; `read` exits 1 only when every listed session is. `list --check` writes
+only what is newer than the session's last fold-in and no newer than what `list` showed. A
+transcript that is gone or unreadable is reported and skipped; `read` exits 1 only when every
+listed session is; `done` exits 3 when it refuses. `list --check` writes
 nothing, so a `--check` run leaves no trace.
 """
 import json
@@ -101,8 +102,9 @@ def _session_items(s):
         items = []
     if not items:
         return [f"[session {s['id']}: unreadable — detail lost]"], True
-    cut = s.get("folded_stop", 0)
-    new = [(who, text) for who, text, ts in items if ts is None or ts > cut]
+    cut, top = s.get("folded_stop", 0), s.get("listed_stop", s["last_stop"])
+    # later entries wait for the next fold-in: `done` records `listed_stop`, so it would skip them
+    new = [(who, text) for who, text, ts in items if ts is None or cut < ts <= top]
     if not new:
         return [f"[session {s['id']}: nothing new since its last fold-in]"], False
     return [f"[{who}] {text}\n" for who, text in new], False
@@ -169,7 +171,7 @@ def cmd_done(home):
         print("fold.py done: refusing - not read to the end yet: " + ", ".join(unread) +
               f'. Run `read "{home}"` (with --from N for later pages) until no "more" line.',
               file=sys.stderr)
-        return 1
+        return 3
     for s in listed:
         rec = load_session(home, s["id"])
         rec["folded_stop"] = rec.pop("listed_stop")

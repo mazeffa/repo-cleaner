@@ -56,7 +56,7 @@ def _read_json(f):
 
 def _write_json(f, data):
     f.parent.mkdir(parents=True, exist_ok=True)
-    tmp = f.with_name(f.name + ".tmp")  # replace, so a crash never leaves half a record
+    tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")  # replace, so a crash never leaves half a record; pid, so two windows don't share one
     tmp.write_text(json.dumps(data), encoding="utf-8")
     os.replace(tmp, f)
 
@@ -142,7 +142,9 @@ def run_checker(root, timeout=25):
         )
     except subprocess.TimeoutExpired:
         return 124, "checker timed out"
-    return out.returncode, out.stdout or out.stderr
+    # A real finding always prints to stdout; exit 1 with none is a traceback, i.e. a crash.
+    code = out.returncode if out.returncode == 0 or (out.returncode == 1 and out.stdout.strip()) else 2
+    return code, out.stdout or out.stderr
 
 
 OFFERED_FILE = BASE_DIR / "offered.json"

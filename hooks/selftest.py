@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -268,7 +269,8 @@ def test_failing_checker(base):
           rec.get("dirty") and rec.get("checked_at") == before.get("checked_at"), rec)
     rc, out, _ = run_hook("session_start.py", {"session_id": "f2", "cwd": str(home),
                                                "source": "startup"}, state, hooks_dir=stub2)
-    check("session_start: a checker that exits 2 is printed", "stub says boom" in out, out)
+    check("session_start: a checker that exits 2 is printed as the checker failing",
+          "stub says boom" in out and "checker itself failed" in out, out)
 
     # A timeout: patch subprocess.run inside a child interpreter, so the real code path
     # (run_checker -> 124 -> printed at session start) runs end to end.
@@ -359,15 +361,58 @@ def test_stop_any_change(base):
     check("stop: a project reached from a parent folder is checked for changes by command",
           rc == 2, (rc, err))
 
-    stub = stub_plugin(base, 'raise ImportError("stub")\n')
+    # cannot be imported as a module, but as a script prints a finding and exits 1: newest_mtime
+    # fails closed, so the check still runs and the finding still blocks
+    stub = stub_plugin(base, 'import sys\nif __name__ != "__main__":\n    raise ImportError("stub")\n'
+                             'print("1 issue(s). NOT_THERE"); sys.exit(1)\n')
     h = make_home(top, "noimport", broken=True)
     aged_session(state, "a6", h, stub)
-    (h / "README.md").write_text("See `docs/NOT_THERE.md` x.\n", encoding="utf-8")
     rc, _, err = stop(state, "a6", h, hooks_dir=stub)
-    check("stop: if the checker can't be imported the check still runs", rc == 2, (rc, err))
-    rc, out, _ = run_hook("session_start.py", {"session_id": "a7", "cwd": str(h),
-                                               "source": "startup"}, state, hooks_dir=stub)
-    check("session_start: an unimportable checker is printed", "checker import failed" in out, out)
+    check("stop: an unimportable checker fails newest_mtime closed - the check still runs",
+          rc == 2 and "NOT_THERE" in err, (rc, err))
+
+    # a checker that crashes at import (traceback on stderr, exit 1, nothing on stdout) is not a finding
+    crash = stub_plugin(base, 'raise ImportError("stub")\n')
+    h = make_home(top, "crash", broken=True)
+    edit(state, "a7", h, h / "README.md", crash)
+    before = records(state, "a7")["crash"]
+    rc, _, err = stop(state, "a7", h, hooks_dir=crash)
+    rec = records(state, "a7")["crash"]
+    check("stop: a checker that crashes is not a finding - exit 0, record still marked",
+          rc == 0 and rec.get("dirty") and rec.get("checked_at") == before.get("checked_at"),
+          (rc, err, rec))
+    rc, out, _ = run_hook("session_start.py", {"session_id": "a8", "cwd": str(h),
+                                               "source": "startup"}, state, hooks_dir=crash)
+    check("session_start: a crashed checker says the checker failed, not that docs have problems",
+          "checker import failed" in out and "checker itself failed" in out
+          and "found problems" not in out, out)
+
+    # a record with no checked_at: the first Stop seeds it, so a later change is caught
+    h = make_home(top, "seeded", broken=True)
+    aged_session(state, "a9", h)
+    patch_record(state, "a9", "seeded", checked_at=None)
+    rc, _, err = stop(state, "a9", h)
+    check("stop: a record with no checked_at is seeded at its first Stop",
+          rc == 0 and "checked_at" in records(state, "a9")["seeded"], (rc, err))
+    time.sleep(0.05)
+    (h / "README.md").write_text("See `docs/NOT_THERE.md` later.\n", encoding="utf-8")
+    rc, _, err = stop(state, "a9", h)
+    check("stop: ...and a later doc change is then caught", rc == 2 and "NOT_THERE" in err, (rc, err))
+
+    # two homes; the first check outlasts the (patched-down) budget, so the second is skipped and named
+    slow = stub_plugin(base, 'import sys, time\nif __name__ == "__main__":\n'
+                             '    time.sleep(1.5); sys.exit(0)\n')
+    stop_py = slow / "stop.py"
+    stop_py.write_text(stop_py.read_text(encoding="utf-8").replace("27 -", "2.5 -"), encoding="utf-8")
+    two = base / "budget homes"
+    h1, h2 = make_home(two, "b1"), make_home(two, "b2")
+    edit(state, "bu", two, h1 / "README.md", slow)
+    edit(state, "bu", two, h2 / "README.md", slow)
+    rc, _, err = stop(state, "bu", two, hooks_dir=slow)
+    left = [n for n, r in records(state, "bu").items() if r.get("dirty")]  # which home runs first is by hash
+    check("stop: a home skipped for time budget is named, exit 0, and stays marked",
+          rc == 0 and "1 home(s) not checked this turn" in err and len(left) == 1
+          and left[0] in err.splitlines()[-1], (rc, err, left))
 
 
 def test_records(base):
@@ -413,7 +458,7 @@ def test_session_start(base):
     check("fold list: lists both", rc == 0 and "earlier1" in out and "earlier2" in out, (out, err))
     stop(state, "late", repo)  # stops between list and done, so never listed
     rc, _, err = fold(state, repo, "done", sid="folder")
-    check("fold done: refuses before the sessions have been read", rc == 1 and "earlier1" in err, err)
+    check("fold done: refuses before the sessions have been read", rc == 3 and "earlier1" in err, err)
     rc, out, err = fold(state, repo, "read")
     check("fold read: transcripts that are gone are reported, and it exits 1",
           rc == 1 and out.count("transcript gone") == 2, (rc, out, err))
@@ -586,13 +631,19 @@ def test_fold_read(base):
 
     with t.open("a", encoding="utf-8") as f:
         f.write(tline("user", "beta has no timestamp") + "\n")
-        f.write(tline("user", "gamma is new", FUTURE) + "\n")
+        f.write(tline("user", "gamma is new",
+                      datetime.now(timezone.utc).isoformat(timespec="milliseconds")) + "\n")
+    time.sleep(0.05)
     stop(state, "f1", home, transcript=t)
     fold(state, home, "list")
+    with t.open("a", encoding="utf-8") as f:
+        f.write(tline("user", "delta came after list", FUTURE) + "\n")
     rc, out, err = fold(state, home, "read")
     check("fold read: after a fold-in, only the new entries - and one with no timestamp",
           "gamma is new" in out and "beta has no timestamp" in out and "fix the chart" not in out,
           (out, err))
+    check("fold read: an entry stamped after list waits for the next fold-in",
+          "delta came after list" not in out, out)
     fold(state, home, "done")
 
     state = base / "state_fold_long"
@@ -606,7 +657,7 @@ def test_fold_read(base):
           rc == 0 and "-- more:" in out and "entry 0 " in out and "entry 29 " not in out
           and "--from" in out, out[-300:])
     rc, _, err = fold(state, home, "done")
-    check("fold done: refuses after a partial read, naming the session", rc == 1 and "f2" in err, err)
+    check("fold done: refuses after a partial read, naming the session", rc == 3 and "f2" in err, err)
     for _ in range(10):
         m = re.search(r"--from (\d+)", out)
         if not m:

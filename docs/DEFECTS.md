@@ -16,7 +16,8 @@ closed by commit `724dd50`. DEF-23 through DEF-28, found later and by a differen
 fixed, and so are DEF-29 through DEF-35, closed by release 0.9.0 (DEF-31 through DEF-34 were
 found 2026-10-09 by fact-checking an explainer page; DEF-35 by a review of the 0.9.0 tree),
 and DEF-36 through DEF-50, closed by release 0.10.0 (found 2026-10-10 by an LLM council review
-of 0.9.0, each checked against the code in debates 1 and 2).
+of 0.9.0, each checked against the code in debates 1 and 2), and DEF-51 through DEF-55,
+closed by release 0.10.1 (from the council's re-grade of 0.10.0).
 
 ## Open
 
@@ -489,3 +490,30 @@ Fix: The skip is gone; D-024 states the rule as "anywhere".
 Status: fixed
 Was: The hooks preferred a project's own `check_docs.py`, and the checker loaded `check_docs_local.py` from the project.
 Fix: Both are removed (D-022): the hooks and the checker only ever run the plugin's own checker.
+
+## Fixed in 0.10.1 (close what the council re-grade got right)
+
+### DEF-51 — A crashed checker was reported as a doc finding
+Status: fixed
+Was: A checker that died at import exits 1 with a traceback on stderr, so Stop blocked on it as if the docs had a finding.
+Fix: `run_checker` maps exit 1 with nothing on stdout (a real finding always prints `N issue(s).`) and any code other than 0 or 1 to 2, "the checker itself failed", which never blocks.
+
+### DEF-52 — SessionStart told the user to fix docs when the checker had failed
+Status: fixed
+Was: Any non-zero checker code printed "found problems in this home - raise them".
+Fix: Only exit 1 says that; 2 and 124 print "the checker itself failed (...) - docs not checked".
+
+### DEF-53 — Homes past Stop's time budget were skipped silently
+Status: fixed
+Was: A home with no time left for its check stayed marked but nothing said it was not checked.
+Fix: Stop names those homes on stderr; it still exits 0 and they stay marked. A record with no `checked_at` is seeded at its first Stop, and a file that vanishes mid-scan no longer makes the change test fail closed.
+
+### DEF-54 — Two windows shared one temp file
+Status: fixed
+Was: `_write_json` wrote every record through `<name>.tmp`, so two simultaneous Stops could interleave.
+Fix: The temp name includes the process id.
+
+### DEF-55 — Fold `read` showed entries `done` would skip
+Status: fixed
+Was: `read` printed everything newer than the last fold-in, including entries written after `list`; `done` records the listed stop, so those were shown once and never folded.
+Fix: `read` stops at the session's `listed_stop`; later entries wait for the next fold-in. `done` refusing is exit 3, distinct from "every session lost" (exit 1).

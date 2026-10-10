@@ -24,9 +24,21 @@ def newest_mtime(home):
     try:
         import check_docs
         ctx = check_docs.Ctx(home, dict(check_docs.CONFIG))
-        return max((p.stat().st_mtime for p in check_docs.docs_plus_log(ctx)), default=0)
+        paths = list(check_docs.docs_plus_log(ctx))
     except Exception:
         return float("inf")  # can't tell: run the checker; it reports its own failure as 2
+    newest = 0
+    for p in paths:
+        try:
+            newest = max(newest, p.stat().st_mtime)
+        except OSError:
+            pass  # vanished mid-scan: nothing to check in it
+    return newest
+
+
+def needs_check(home, rec):
+    """A doc was edited (dirty), or any doc is newer than the last clean check."""
+    return bool(rec.get("dirty") or ("checked_at" in rec and newest_mtime(home) > rec["checked_at"]))
 
 
 def main():
@@ -43,14 +55,16 @@ def main():
         touched = [(home, {})]
 
     blocking = not data.get("stop_hook_active")
-    reasons = []
+    reasons, skipped = [], []
     for home, rec in touched:
         rec["transcript"] = data.get("transcript_path") or rec.get("transcript")
         rec["last_stop"] = time.time()
         if rec.pop("fold_pending", False):
             rec["folded_stop"] = rec["last_stop"]  # this session only folded in; DEF-33
-        run = rec.get("dirty") or ("checked_at" in rec and newest_mtime(home) > rec["checked_at"])
+        run = needs_check(home, rec)
         remaining = 27 - (time.time() - t0)
+        if run and blocking and remaining < 2:
+            skipped.append(str(home))
         if run and blocking and remaining >= 2:
             started = time.time()  # taken before the run, so a doc changed during it is re-checked
             code, out = run_checker(home, timeout=min(25, remaining))
@@ -60,8 +74,12 @@ def main():
             elif code == 1:
                 reasons.append(f"{home}: the checker exited 1:\n{out.strip() or '(no output)'}")
             # 2 (checker failed) or 124 (timed out): not a doc finding - stay marked, retry next Stop
+        rec.setdefault("checked_at", t0)  # a record from before 0.10 is covered from its first Stop
         save_session(home, session_id, rec)
 
+    if skipped:
+        print(f"repo-clean: {len(skipped)} home(s) not checked this turn (time budget): "
+              + ", ".join(skipped), file=sys.stderr)
     if reasons:
         print("repo-clean: fix these doc findings before stopping.\n" + "\n\n".join(reasons),
               file=sys.stderr)
