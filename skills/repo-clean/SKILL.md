@@ -58,16 +58,15 @@ These hold across all three subcommands:
 - The checker must exit 0; SessionStart runs it and prints any finding, and `maintain` runs
   it before finishing. Never claim it passed without having run it.
 - Never commit, stash, stage, or change git settings (including `.gitignore`) on the
-  user's behalf. Git is the user's storage, not this tool's (D-021).
+  user's behalf. Git is the user's storage, not this tool's (D-025).
 
 ## Vocabulary
 
 - **Routing table** — the "Where answers live" table (conventionally in `CLAUDE.md`) mapping
   a question to its one authoritative file.
 - **Authority** — the file a routing-table row names as owning a question.
-- **Register** — the decision log, entries `D-NNN`, two closed-vocabulary fields:
-  `Status: active | superseded | open` (lifecycle) and `Verdict: adopted | rejected |
-  unresolved` (what happened to the approach). Supersession is symmetric.
+- **Register** — the decision log, entries `D-NNN`, one closed-vocabulary field:
+  `Status: active | superseded | rejected | open`. Supersession is symmetric.
 - **Log grammar** — `## YYYY-MM-DD [(N)] — headline` headings (`(N)` only when more than one
   entry shares a date), each entry carrying `Decisions:` and `Docs:`, the last entry also
   carrying `State:` and `Next:`.
@@ -86,9 +85,10 @@ canonical — the inline skeletons in `init.md` are what `init` actually writes.
 ## Hooks
 
 One hook, SessionStart, shipped in `hooks/` and wired in `hooks/hooks.json`. It reads and
-prints; it records nothing and writes no doc (D-025).
+prints; it writes no doc, and its only state is offered.json, so the setup offer fires once
+(D-025(a)).
 
-It finds the **home** (D-018) by walking up from the working directory to the nearest
+It finds the **home** by walking up from the working directory to the nearest
 `.repo-clean` marker (D-023). It prints the log's last entry heading and its age, then its
 `State:` and `Next:` — read by the checker's own log parser, so the two never disagree —
 then `repo-clean <version>` (the running plugin's version, so a stale install shows), then
@@ -109,7 +109,7 @@ installed plugin cache. Nothing runs it automatically — run it by hand after c
 
 ## Checker
 
-`scripts/check_docs.py` is a stdlib-only, config-driven checker. One flag:
+`scripts/check_docs.py` is a stdlib-only checker. One flag:
 
 - `--root PATH` — the home to check. Default: the nearest `.repo-clean` marker at or above
   the current folder. No marker there, or a `--root` that is not a home, exits 2 — nothing was
@@ -122,6 +122,7 @@ checker never runs project code (D-022). Its rules are listed in its own docstri
 ## Never
 
 - Move or delete a file without explicit confirmation from the user.
-- Write anything outside the target repo.
+- Write anything outside the target repo — the hook's offered.json is the one exception
+  (D-025(a)).
 - Claim the checker passed without having actually run it this session.
 - Overwrite a tracked repo file without the user's confirmation.

@@ -28,8 +28,8 @@ a document.
 
 ```markdown
 ## D-004 — Weather features (precipitation, wind, road-surface temp)
-Status: active   Verdict: adopted   Date: 2025-09-14, reconfirmed 2026-09-08
-Evidence: docs/archive/TECHNICAL_DECISIONS.md:33-35, docs/log/2025-Q3.md:581-594
+Status: active   Date: 2025-09-14, reconfirmed 2026-09-08
+Evidence: docs/archive/TECHNICAL_DECISIONS.md:33-35, docs/log/2025.md:581-594
 Decision: Include forecast weather features (precipitation rate, wind, surface temp) in the
 ETA feature set.
 Why:
@@ -39,8 +39,7 @@ Why:
   moving raw per-stop ETA correlation (0.6126 -> 0.6078).
 ```
 
-Two orthogonal, closed-vocabulary fields: `Status: active | superseded | open` (lifecycle)
-and `Verdict: adopted | rejected | unresolved` (what happened to the approach). Supersession
+One closed-vocabulary field: `Status: active | superseded | rejected | open`. Supersession
 is symmetric — if A names B in `Superseded-by`, B names A in `Supersedes`.
 
 ## Log entry (docs/log/<year>.md)

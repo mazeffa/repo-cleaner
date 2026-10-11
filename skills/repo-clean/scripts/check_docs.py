@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-r"""Generic docs hygiene checker. Stdlib only. A config-driven core; there is no per-project
-add-on file (D-022) - the checker never runs project code.
+r"""Generic docs hygiene checker. Stdlib only. There is no per-project add-on file
+(D-022) - the checker never runs project code.
 
 Exit 0 on success, printing one line stating that shape was verified and content
 was not. Exit 1 on doc findings, exit 2 when there is nothing to check (no `.repo-clean` home
@@ -9,8 +9,8 @@ finding either way. With no --root, the home is the nearest `.repo-clean` marker
 the current folder.
 
 Rules (stable string ids, used in inline suppression comments and in output; D-024):
-  decisions-integrity   Unique IDs in the decision register, closed-vocabulary Status/
-                         Verdict read from the entry body only, symmetric supersession
+  decisions-integrity   Unique IDs in the decision register, closed-vocabulary Status
+                         read from the entry body only, symmetric supersession
                          (every id in Supersedes:/Superseded-by: is checked, not just
                          the first).
   log-fields-resolve    docs/log/*.md 'Decisions:'/'Docs:' fields resolve to real ids/
@@ -27,8 +27,7 @@ Rules (stable string ids, used in inline suppression comments and in output; D-0
   banned-headers        No 'Next Steps'-style header anywhere - next steps live only in the
                          current log entry's Next: field (D-016(c)); narrowed from
                          TODO/Next Steps/Future Work by D-017.
-  diary-grammar         Log heading grammar (including the (N) numbering convention),
-                         required fields, only the log's last entry, across period files,
+  log-grammar           Log heading grammar, required fields, only the log's last entry, across period files,
                          carries State: and Next: - and it must carry both (D-016(c)).
   open-questions-sync   Open-questions table <-> Status: open entries, Revisit: required.
   routing-coverage      Every living doc is referenced in the routing file's table
@@ -38,8 +37,8 @@ Fenced code blocks (```...```) are blanked before any rule reads a document, so 
 heading or field name inside a fence is never mistaken for real content.
 
 Suppression, three layers:
-  1. exempt_dirs                                      - whole directories, always exempt.
-  2. routing_exempt_topdirs                            - docs/<topdir> exempt from routing-coverage only.
+  1. EXEMPT_DIRS                                      - whole directories, always exempt.
+  2. ROUTING_EXEMPT_TOPDIRS                            - docs/<topdir> exempt from routing-coverage only.
   3. <!-- check-docs: ignore <rule-id> --> on a line   - suppresses one hit on that line.
 """
 import argparse
@@ -48,48 +47,49 @@ import re
 import sys
 from pathlib import Path
 
-CONFIG = {
-    "living_roots": ["CLAUDE.md", "README.md"],
-    "docs_dir": "docs",
-    "exempt_dirs": ["docs/archive", "docs/log"],
-    "decisions_file": "docs/DECISIONS.md",
-    "id_prefix": "D-",
-    "status_vocab": ("active", "superseded", "open"),
-    "verdict_vocab": ("adopted", "rejected", "unresolved"),
-    "open_questions_section": ("## Open questions", "## Fields"),
-    "log_dir": "docs/log",
-    "routing_file": "CLAUDE.md",
-    "routing_exempt_topdirs": ("archive", "log", "research"),
-    "banned_header_re": r"^#+.*\bNext Steps\b",
-    "outside_path_re": (
-        r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-016(a)); other drives are shared
-        r"|~[\\/]"                           # ~/ or ~\
-        r"|(?:^|[\s`(\[])/(?:home|Users|root)/"          # unix absolute home dirs
-        r"|(?:^|[\s`(\[])/[A-Za-z]/(?:Users|home)/"      # Git Bash /c/Users, /c/home
-    ),
-    "path_suppressed_prefixes": ("output/",),
-    "path_cmd_prefixes": ("python ", "python3 "),
-}
+LIVING_ROOTS = ("CLAUDE.md", "README.md")
+DOCS_DIR = "docs"
+EXEMPT_DIRS = ("docs/archive", "docs/log")
+DECISIONS_FILE = "docs/DECISIONS.md"
+ID_PREFIX = "D-"
+STATUS_VOCAB = ("active", "superseded", "rejected", "open")
+OPEN_QUESTIONS_SECTION = ("## Open questions", "## Fields")
+LOG_DIR = "docs/log"
+ROUTING_FILE = "CLAUDE.md"
+ROUTING_EXEMPT_TOPDIRS = ("archive", "log", "research")
+BANNED_HEADER_RE = r"^#+.*\bNext Steps\b"
+OUTSIDE_PATH_RE = (
+    r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-016(a)); other drives are shared
+    r"|~[\\/]"                           # ~/ or ~\
+    r"|(?:^|[\s`(\[])/(?:home|Users|root)/"          # unix absolute home dirs
+    r"|(?:^|[\s`(\[])/[A-Za-z]/(?:Users|home)/"      # Git Bash /c/Users, /c/home
+)
+PATH_SUPPRESSED_PREFIXES = ("output/",)  # analytics homes: generated output is not a doc link
 
 
-def read_doc(p):
+def scan_doc(p):
     """Read a doc, never raising on a stray non-UTF-8 byte (a mojibake char just fails
     some other rule), with every fenced code block's interior (and its ``` delimiter
-    lines) blanked out. Line numbers are preserved so callers can still report them."""
+    lines) blanked out. Line numbers are preserved so callers can still report them.
+    Returns (text, line of a fence opener that is never closed, or None); the text stays
+    blanked to the end, so example headings inside it never fire a rule."""
     text = p.read_text(encoding="utf-8", errors="replace")
-    lines = text.split("\n")
     out = []
-    in_fence = False
+    opener = None
     fence_re = re.compile(r"^\s*```")
-    for line in lines:
+    for n, line in enumerate(text.split("\n"), 1):
         if fence_re.match(line):
-            in_fence = not in_fence
+            opener = None if opener else n
             out.append("")
-        elif in_fence:
+        elif opener:
             out.append("")
         else:
             out.append(line)
-    return "\n".join(out)
+    return "\n".join(out), opener
+
+
+def read_doc(p):
+    return scan_doc(p)[0]
 
 
 def parse_fields(lines):
@@ -158,14 +158,13 @@ def line_ignored(line, rule_id):
 
 
 class Ctx:
-    """Resolved config for one run: root path + absolute paths derived from CONFIG."""
+    """One run: the home's root path and the absolute paths derived from the constants."""
 
-    def __init__(self, root, config):
+    def __init__(self, root):
         self.root = root
-        self.config = config
-        self.docs = root / config["docs_dir"] if config["docs_dir"] else None
-        self.exempt_dirs = {root / d for d in config["exempt_dirs"]}
-        self.decision_ids = None  # set by check_decisions_integrity if that rule runs
+        self.docs = root / DOCS_DIR
+        self.exempt_dirs = {root / d for d in EXEMPT_DIRS}
+        self.decision_ids = None  # set by check_decisions_integrity
 
     def is_exempt(self, p):
         return any(d in p.parents or d == p for d in self.exempt_dirs)
@@ -174,8 +173,8 @@ class Ctx:
 def routed_docs(ctx):
     """Every existing .md a routing-table row names (D-020) - a file the table calls
     authoritative is one the model will trust, so it is one the checker reads."""
-    routing = ctx.root / (ctx.config["routing_file"] or "")
-    if not ctx.config["routing_file"] or not routing.is_file():
+    routing = ctx.root / ROUTING_FILE
+    if not routing.is_file():
         return []
     out = []
     for line in read_doc(routing).splitlines():
@@ -190,9 +189,8 @@ def routed_docs(ctx):
 
 
 def living_docs(ctx):
-    files = [ctx.root / name for name in ctx.config["living_roots"] if (ctx.root / name).exists()]
-    if ctx.docs:
-        files += [p for p in ctx.docs.rglob("*.md") if not ctx.is_exempt(p)]
+    files = [ctx.root / name for name in LIVING_ROOTS if (ctx.root / name).exists()]
+    files += [p for p in ctx.docs.rglob("*.md") if not ctx.is_exempt(p)]
     seen = {f.resolve() for f in files}
     for p in routed_docs(ctx):
         if p.resolve() not in seen:
@@ -203,16 +201,15 @@ def living_docs(ctx):
 
 def docs_plus_log(ctx):
     files = list(living_docs(ctx))
-    if ctx.config["log_dir"]:
-        log_dir = ctx.root / ctx.config["log_dir"]
-        if log_dir.exists():
-            files += sorted(log_dir.glob("*.md"))
+    log_dir = ctx.root / LOG_DIR
+    if log_dir.exists():
+        files += sorted(log_dir.glob("*.md"))
     return files
 
 
 def top_level_names(ctx):
     names = {p.name for p in ctx.root.iterdir()}
-    names |= set(ctx.config["living_roots"])
+    names |= set(LIVING_ROOTS)
     return names
 
 
@@ -254,17 +251,13 @@ def candidate_path(ctx, token, known_roots):
     None to skip it. Only tokens that look confidently like a repo path are returned:
     whitespace-free, made of word/dot/dash segments joined by '/', with a real
     top-level name as the first segment."""
-    cfg = ctx.config
     s = token.strip().strip("\"'")
-    for pre in cfg["path_cmd_prefixes"]:
-        if s.startswith(pre):
-            s = s[len(pre):]
     if not s or any(x in s for x in PLACEHOLDER):
         return None
     if s.startswith(("http://", "https://")):
         return None
     s = re.sub(r":\d+(-\d+)?$", "", s.rstrip(":,.\"'()"))
-    if not s or s.startswith(tuple(cfg["path_suppressed_prefixes"])):
+    if not s or s.startswith(PATH_SUPPRESSED_PREFIXES):
         return None
     if not CANDIDATE_TOKEN_RE.match(s):
         return None
@@ -303,63 +296,71 @@ def docs_field_paths(ctx, value, known_roots):
 # Generic rules
 # ---------------------------------------------------------------------------
 
+VERDICT_RE = re.compile(r"(?:^|\s)Verdict:", re.M)  # raw text: also catches 'Status: x Verdict: y'
+
+
 def check_decisions_integrity(ctx, errors, docs):
-    cfg = ctx.config
-    if not cfg["decisions_file"]:
-        ctx.decision_ids = None
-        return
-    p = ctx.root / cfg["decisions_file"]
+    p = ctx.root / DECISIONS_FILE
     if not p.exists():
-        errors.append(f"{cfg['decisions_file']}: file does not exist")
+        errors.append(f"{DECISIONS_FILE}: file does not exist")
         ctx.decision_ids = set()
         return
-    prefix = re.escape(cfg["id_prefix"])
+    prefix = re.escape(ID_PREFIX)
     id_re = re.compile(prefix + r"\d+")
     heading_re = re.compile(rf"^## {prefix}\d+\b.*$")
     text = read_doc(p)
+    for n, line in enumerate(text.split("\n"), 1):
+        m = re.match(rf"^(?:#|#{{3,}}) ({prefix}\d+)", line)
+        if m:
+            errors.append(f"{DECISIONS_FILE}:{n}: {m.group(1)}: decision heading must be '## {ID_PREFIX}NNN'")
     entries = split_entries(text, heading_re)
     ids = set()
+    verdict_ids = []
     superseded_by, supersedes = {}, {}
     for heading, body in entries:
         m = re.match(rf"^## ({prefix}\d+)", heading)
         eid = m.group(1)
         if eid in ids:
-            errors.append(f"{cfg['decisions_file']}: duplicate id {eid}")
+            errors.append(f"{DECISIONS_FILE}: duplicate id {eid}")
         ids.add(eid)
         fields = parse_fields(body)
         status = fields.get("Status")
-        verdict = fields.get("Verdict")
-        if status not in cfg["status_vocab"]:
-            errors.append(f"{cfg['decisions_file']}: {eid} bad/missing Status")
-        if verdict not in cfg["verdict_vocab"]:
-            errors.append(f"{cfg['decisions_file']}: {eid} bad/missing Verdict")
+        if VERDICT_RE.search("\n".join(body)):
+            verdict_ids.append(eid)
+        if status not in STATUS_VOCAB:
+            errors.append(f"{DECISIONS_FILE}: {eid} bad/missing Status: {(status or '')!r}")
         sb_val = fields.get("Superseded-by", "")
         sp_val = fields.get("Supersedes", "")
         if status == "superseded" and not id_re.search(sb_val):
-            errors.append(f"{cfg['decisions_file']}: {eid} is superseded but names no Superseded-by target")
+            errors.append(f"{DECISIONS_FILE}: {eid} is superseded but names no Superseded-by target")
         if sb_val:
             superseded_by[eid] = id_re.findall(sb_val)
         if sp_val:
             supersedes[eid] = id_re.findall(sp_val)
+    if verdict_ids:
+        errors.append(
+            f"{DECISIONS_FILE}: {len(verdict_ids)} entries still carry Verdict: (retired, D-026): "
+            f"{', '.join(verdict_ids)} - adopted: delete it; rejected and never in force: "
+            "Status: rejected; unresolved and not superseded: Status: open")
     reported_pairs = set()
     for eid, targets in superseded_by.items():
         for target in targets:
             if target not in ids:
-                errors.append(f"{cfg['decisions_file']}: {eid} Superseded-by dangles at {target}")
+                errors.append(f"{DECISIONS_FILE}: {eid} Superseded-by dangles at {target}")
             elif eid not in supersedes.get(target, []):
                 pair = frozenset((eid, target))
                 if pair not in reported_pairs:
                     reported_pairs.add(pair)
-                    errors.append(f"{cfg['decisions_file']}: {eid}<->{target} supersession is not symmetric")
+                    errors.append(f"{DECISIONS_FILE}: {eid}<->{target} supersession is not symmetric")
     for eid, targets in supersedes.items():
         for target in targets:
             if target not in ids:
-                errors.append(f"{cfg['decisions_file']}: {eid} Supersedes dangles at {target}")
+                errors.append(f"{DECISIONS_FILE}: {eid} Supersedes dangles at {target}")
             elif eid not in superseded_by.get(target, []):
                 pair = frozenset((eid, target))
                 if pair not in reported_pairs:
                     reported_pairs.add(pair)
-                    errors.append(f"{cfg['decisions_file']}: {eid}<->{target} supersession is not symmetric")
+                    errors.append(f"{DECISIONS_FILE}: {eid}<->{target} supersession is not symmetric")
     ctx.decision_ids = ids
 
 
@@ -367,13 +368,10 @@ LOG_HEADING_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}.*$")
 
 
 def check_log_fields_resolve(ctx, errors, docs):
-    cfg = ctx.config
-    if not cfg["log_dir"]:
-        return
-    log_dir = ctx.root / cfg["log_dir"]
+    log_dir = ctx.root / LOG_DIR
     if not log_dir.exists():
         return
-    prefix = re.escape(cfg["id_prefix"])
+    prefix = re.escape(ID_PREFIX)
     id_re = re.compile(prefix + r"\d+")
     known_roots = top_level_names(ctx)
     for log in sorted(log_dir.glob("*.md")):
@@ -391,10 +389,7 @@ def check_log_fields_resolve(ctx, errors, docs):
 
 
 def check_outside_repo_paths(ctx, errors, docs):
-    outside_re = ctx.config["outside_path_re"]
-    if not outside_re:
-        return
-    pat = re.compile(outside_re)
+    pat = re.compile(OUTSIDE_PATH_RE)
     for p in docs_plus_log(ctx):
         for i, line in enumerate(read_doc(p).splitlines(), 1):
             if line_ignored(line, "outside-repo-paths"):
@@ -430,10 +425,7 @@ def check_paths_exist(ctx, errors, docs):
 
 
 def check_banned_headers(ctx, errors, docs):
-    header_re = ctx.config["banned_header_re"]
-    if not header_re:
-        return
-    pat = re.compile(header_re, re.I)
+    pat = re.compile(BANNED_HEADER_RE, re.I)
     for p in docs_plus_log(ctx):
         for i, line in enumerate(read_doc(p).splitlines(), 1):
             if line_ignored(line, "banned-headers"):
@@ -442,17 +434,17 @@ def check_banned_headers(ctx, errors, docs):
                 errors.append(f"{p.relative_to(ctx.root)}:{i}: banned section header: {line.strip()}")
 
 
-DIARY_HEAD_START_RE = re.compile(r"^## (\d{4}-\d{2}-\d{2})(?: \((\d+)\))?")
-DIARY_HEADING_LINE_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}.*$", re.M)
-DIARY_HEADING_GRAMMAR_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}(?: \(\d+\))? [\u2014-] .+$")
+LOG_HEAD_START_RE = re.compile(r"^## (\d{4}-\d{2}-\d{2})(?: \((\d+)\))?")
+LOG_HEADING_LINE_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}.*$", re.M)
+LOG_HEADING_GRAMMAR_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}(?: \(\d+\))? [\u2014-] .+$")
 OLD_DATED_HEADING_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}")
 
 
 def log_entries(ctx):
     """Every log entry across the period files, oldest first, as (file name, heading, body)."""
     out = []
-    log_dir = ctx.root / ctx.config["log_dir"] if ctx.config["log_dir"] else None
-    for log in sorted(log_dir.glob("*.md")) if log_dir and log_dir.exists() else []:
+    log_dir = ctx.root / LOG_DIR
+    for log in sorted(log_dir.glob("*.md")) if log_dir.exists() else []:
         out.extend((log.name, h, b) for h, b in split_entries(read_doc(log), LOG_HEADING_RE))
     return out
 
@@ -460,15 +452,12 @@ def log_entries(ctx):
 def current_fields(root):
     """The parsed fields of the log's last entry (State:, Next:, ...) - the one definition of
     "current state", shared by the checker and the SessionStart hook."""
-    entries = log_entries(Ctx(root, dict(CONFIG)))
+    entries = log_entries(Ctx(root))
     return parse_fields(entries[-1][2]) if entries else {}
 
 
-def check_diary_grammar(ctx, errors, docs):
-    cfg = ctx.config
-    if not cfg["log_dir"]:
-        return
-    log_dir = ctx.root / cfg["log_dir"]
+def check_log_grammar(ctx, errors, docs):
+    log_dir = ctx.root / LOG_DIR
     if not log_dir.exists():
         return
     for log in sorted(log_dir.glob("*.md")):
@@ -477,7 +466,7 @@ def check_diary_grammar(ctx, errors, docs):
 
         first_idx = None
         for i, line in enumerate(lines):
-            if DIARY_HEAD_START_RE.match(line):
+            if LOG_HEAD_START_RE.match(line):
                 first_idx = i
                 break
         if first_idx is not None:
@@ -488,29 +477,16 @@ def check_diary_grammar(ctx, errors, docs):
                     )
 
         seen_keys = set()
-        date_groups = {}
-        for m in DIARY_HEADING_LINE_RE.finditer(text):
+        for m in LOG_HEADING_LINE_RE.finditer(text):
             heading = m.group(0)
             lineno = text[:m.start()].count("\n") + 1
-            if not DIARY_HEADING_GRAMMAR_RE.match(heading):
-                errors.append(f"{log.name}:{lineno}: diary heading grammar violated: {heading.strip()}")
-            hm = DIARY_HEAD_START_RE.match(heading)
-            date, n = hm.group(1), hm.group(2)
-            key = (date, n or "")
+            if not LOG_HEADING_GRAMMAR_RE.match(heading):
+                errors.append(f"{log.name}:{lineno}: log heading grammar violated: {heading.strip()}")
+            hm = LOG_HEAD_START_RE.match(heading)
+            key = (hm.group(1), hm.group(2) or "")
             if key in seen_keys:
-                errors.append(f"{log.name}:{lineno}: duplicate diary heading date+N {key}")
+                errors.append(f"{log.name}:{lineno}: duplicate log heading date+N {key}")
             seen_keys.add(key)
-            date_groups.setdefault(date, []).append((n, lineno, heading))
-
-        for date, group in date_groups.items():
-            for idx, (n, lineno, heading) in enumerate(group):
-                expected = None if idx == 0 else str(idx + 1)
-                if n != expected:
-                    want = "no (N)" if expected is None else f"({expected})"
-                    errors.append(
-                        f"{log.name}:{lineno}: heading numbering should be {want} for the "
-                        f"#{idx + 1} entry dated {date}: {heading.strip()}"
-                    )
 
         entries = split_entries(text, LOG_HEADING_RE)
         for heading, body in entries:
@@ -538,19 +514,16 @@ def check_diary_grammar(ctx, errors, docs):
 
 
 def check_open_questions_sync(ctx, errors, docs):
-    cfg = ctx.config
-    if not cfg["open_questions_section"] or not cfg["decisions_file"]:
-        return
-    start, end = cfg["open_questions_section"]
-    p = ctx.root / cfg["decisions_file"]
+    start, end = OPEN_QUESTIONS_SECTION
+    p = ctx.root / DECISIONS_FILE
     if not p.exists():
         return
-    prefix = re.escape(cfg["id_prefix"])
+    prefix = re.escape(ID_PREFIX)
     id_re = prefix + r"\d+"
     text = read_doc(p)
     m = re.search(rf"^{re.escape(start)}\n(.*?)^{re.escape(end)}", text, flags=re.M | re.S)
     if not m:
-        errors.append(f"{cfg['decisions_file']}: '{start}' ... '{end}' section not found")
+        errors.append(f"{DECISIONS_FILE}: '{start}' ... '{end}' section not found")
         return
     table_ids = set(re.findall(rf"\|\s*({id_re})\s*\|", m.group(1)))
 
@@ -562,21 +535,18 @@ def check_open_questions_sync(ctx, errors, docs):
         if fields.get("Status") == "open":
             open_ids.add(eid)
             if not fields.get("Revisit", "").strip():
-                errors.append(f"{cfg['decisions_file']}: {eid} is Status: open but has no Revisit: trigger")
+                errors.append(f"{DECISIONS_FILE}: {eid} is Status: open but has no Revisit: trigger")
 
     for eid in sorted(open_ids - table_ids):
-        errors.append(f"{cfg['decisions_file']}: {eid} is Status: open but missing from the Open questions table")
+        errors.append(f"{DECISIONS_FILE}: {eid} is Status: open but missing from the Open questions table")
     for eid in sorted(table_ids - open_ids):
-        errors.append(f"{cfg['decisions_file']}: {eid} is in the Open questions table but is not Status: open")
+        errors.append(f"{DECISIONS_FILE}: {eid} is in the Open questions table but is not Status: open")
 
 
 def check_routing_coverage(ctx, errors, docs):
-    cfg = ctx.config
-    if not cfg["routing_file"] or not ctx.docs:
-        return
-    routing_path = ctx.root / cfg["routing_file"]
+    routing_path = ctx.root / ROUTING_FILE
     if not routing_path.exists():
-        errors.append(f"{cfg['routing_file']}: file does not exist")
+        errors.append(f"{ROUTING_FILE}: file does not exist")
         return
     routing_text = read_doc(routing_path)
     routed = set()
@@ -587,18 +557,17 @@ def check_routing_coverage(ctx, errors, docs):
                 if norm.startswith("./"):
                     norm = norm[2:]
                 routed.add(norm)
-    exempt_topdirs = tuple(cfg["routing_exempt_topdirs"])
     for ext in ("*.md", "*.html"):
         for p in sorted(ctx.docs.rglob(ext)):
             rel = p.relative_to(ctx.docs)
-            if rel.parts and rel.parts[0] in exempt_topdirs:
+            if rel.parts and rel.parts[0] in ROUTING_EXEMPT_TOPDIRS:
                 continue
             text = read_doc(p)
             if any(m.group(1) == "routing-coverage" for m in SUPPRESS_RE.finditer(text)):
                 continue
             rel_posix = p.relative_to(ctx.root).as_posix()
             if rel_posix not in routed:
-                errors.append(f"{rel_posix}: not referenced in {cfg['routing_file']}'s table "
+                errors.append(f"{rel_posix}: not referenced in {ROUTING_FILE}'s table "
                                "(no check-docs:ignore routing-coverage marker either)")
 
 
@@ -608,7 +577,7 @@ GENERIC_RULES = (
     ("outside-repo-paths", check_outside_repo_paths),
     ("paths-exist", check_paths_exist),
     ("banned-headers", check_banned_headers),
-    ("diary-grammar", check_diary_grammar),
+    ("log-grammar", check_log_grammar),
     ("open-questions-sync", check_open_questions_sync),
     ("routing-coverage", check_routing_coverage),
 )
@@ -618,6 +587,11 @@ def run_generic_rules(ctx, errors):
     docs = living_docs(ctx)
     for _rule_id, fn in GENERIC_RULES:
         fn(ctx, errors, docs)
+    for p in docs_plus_log(ctx):
+        opener = scan_doc(p)[1]
+        if opener:
+            errors.append(f"{p.relative_to(ctx.root)}:{opener}: unclosed code fence; "
+                          "the rest of the file is unchecked")
 
 
 # ---------------------------------------------------------------------------
@@ -674,7 +648,7 @@ def _main(argv):
         return 2
 
     errors = []
-    ctx = Ctx(root, dict(CONFIG))
+    ctx = Ctx(root)
     run_generic_rules(ctx, errors)
 
     for e in errors:

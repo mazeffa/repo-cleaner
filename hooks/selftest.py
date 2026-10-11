@@ -58,7 +58,7 @@ def make_home(parent, name, broken=False):
     (h / "README.md").write_text(
         "See `docs/NOT_THERE.md`.\n" if broken else "fine\n", encoding="utf-8")
     (h / "docs" / "DECISIONS.md").write_text(
-        "## Open questions\n\n## Fields\n\n## D-001 — a\nStatus: active   Verdict: adopted\n",
+        "## Open questions\n\n## Fields\n\n## D-001 — a\nStatus: active\n",
         encoding="utf-8")
     (h / "docs" / "log" / "2026.md").write_text(
         "## 2026-01-01 — start\n\nDecisions: D-001\nDocs: CLAUDE.md\nState: ok → next\nNext: more\n",
@@ -220,7 +220,7 @@ def test_session_start(base):
 
 
 def test_find_home(base):
-    """D-018/D-023: the marker and the walk-up; the no-home glob; no pre-marker layout."""
+    """D-023: the marker and the walk-up; the no-home glob; no pre-marker layout."""
     from _lib import find_home, find_homes_nearby
 
     repo = make_scratch_repo(base).resolve()
@@ -328,27 +328,38 @@ def test_checker_rules(base):
         "| D-999 | ghost row, not an open entry below | never |\n\n"
         "## Fields\n\n"
         "## D-001 \u2014 a\n"
-        "Status: active   Verdict: adopted extra words   Superseded-by: D-002\n\n"
+        "Status: active extra words   Superseded-by: D-002\n\n"
         "## D-002 \u2014 b\n"
-        "Status: superseded   Verdict: adopted\n\n"
+        "Status: superseded\n\n"
+        # D-026: the legacy field is one aggregated finding, naming every entry that still has it.
         "## D-003 \u2014 c\n"
         "Status: open   Verdict: unresolved\n\n"
+        "## D-780 \u2014 legacy field after a single space\n"
+        "Status: active Verdict: rejected\n\n"
+        # D-026: rejected needs no Superseded-by; superseded still does.
+        "## D-781 \u2014 rejected, no link needed\n"
+        "Status: rejected\n\n"
+        "## D-782 \u2014 superseded, names no replacement\n"
+        "Status: superseded\n\n"
+        # a wrong-level heading is flagged, not silently skipped
+        "### D-783 \u2014 wrong heading level\n"
+        "Decision: x\n\n"
         # DEF-09 fire case: a title containing "Revisit" must not satisfy the real
         # Revisit: field requirement - the body has none, so this must still fire.
         "## D-778 \u2014 Revisit later\n"
-        "Status: open   Verdict: unresolved\n\n"
+        "Status: open\n\n"
         # DEF-08 quiet case: prose mentions Superseded-by: with a single space, and a
         # dangling-looking id, but must not be parsed as a real field.
         "## D-777 \u2014 prose mentions a field name\n"
-        "Status: active   Verdict: adopted\n"
+        "Status: active\n"
         "Why: We considered Superseded-by: D-889 but rejected the idea.\n\n"
         # DEF-07 fire case: one decision superseding two, both directions must match.
         "## D-010 \u2014 consolidates two\n"
-        "Status: active   Verdict: adopted   Supersedes: D-011, D-012\n\n"
+        "Status: active   Supersedes: D-011, D-012\n\n"
         "## D-011 \u2014 folded in, symmetric\n"
-        "Status: superseded   Verdict: adopted   Superseded-by: D-010\n\n"
+        "Status: superseded   Superseded-by: D-010\n\n"
         "## D-012 \u2014 folded in, NOT symmetric (missing Superseded-by)\n"
-        "Status: superseded   Verdict: adopted\n\n"
+        "Status: superseded\n\n"
         # D-016(c): the register is not exempt from the banned header.
         "## Next Steps in the register\n",
         encoding="utf-8",
@@ -387,6 +398,15 @@ def test_checker_rules(base):
         "```\n",
         encoding="utf-8",
     )
+    (tmp / "docs" / "UNCLOSED.md").write_text(
+        "# unclosed\n"
+        "Real content.\n"
+        "```markdown\n"
+        "## D-998 \u2014 a fake heading in a fence nobody closed\n"
+        "Status: nonsense\n"
+        "## Next Steps inside it\n",
+        encoding="utf-8",
+    )
     (tmp / "docs" / "log" / "2099-01.md").write_text(
         "## 2099-01-01 \u2014 wrapped fields\n"
         "Decisions: D-999\n"
@@ -415,7 +435,7 @@ def test_checker_rules(base):
     )
 
     found = []
-    check_docs.run_generic_rules(check_docs.Ctx(tmp, dict(check_docs.CONFIG)), found)
+    check_docs.run_generic_rules(check_docs.Ctx(tmp), found)
 
     def has(*substrings):
         return any(all(s in e for s in substrings) for e in found)
@@ -424,7 +444,18 @@ def test_checker_rules(base):
         return not any(all(s in e for s in substrings) for e in found)
 
     for label, ok in {
-        "bad/missing Verdict": has("bad/missing Verdict"),
+        "bad/missing Status shows the value": has("D-001", "bad/missing Status: 'active extra words'")
+            and has("D-780", "bad/missing Status: 'active Verdict: rejected'"),
+        "D-026: legacy Verdict is one aggregated finding naming its entries":
+            len([e for e in found if "still carry Verdict:" in e]) == 1
+            and has("2 entries still carry Verdict:", "D-003", "D-780"),
+        "D-026: Status: rejected without Superseded-by is quiet": none_has("D-781"),
+        "D-026: Status: superseded without Superseded-by fires": has("D-782", "names no Superseded-by"),
+        "a ### decision heading is flagged": has("D-783", "decision heading must be '## D-NNN'"),
+        "an unclosed fence is one finding, and nothing inside it fires":
+            len([e for e in found if "unclosed code fence" in e]) == 1
+            and has("UNCLOSED.md:3", "unclosed code fence") and none_has("D-998")
+            and none_has("UNCLOSED.md", "banned"),
         "Docs: field finding": has("Docs:"),
         "outside-repo path": has("absolute/outside-repo path in a living doc"),
         "missing path fires, suppressed one does not": has("does not exist") and none_has("SUPPRESSED_MISSING"),
@@ -435,8 +466,8 @@ def test_checker_rules(base):
         "missing Docs:": has("missing a Docs:"),
         "last entry missing State:": has("missing a non-empty State:"),
         "State: on a non-last entry": has("carries a State: line but is not"),
-        "diary grammar": has("diary heading grammar violated"),
-        "duplicate diary heading": has("duplicate diary heading"),
+        "log grammar": has("log heading grammar violated"),
+        "duplicate log heading": has("duplicate log heading"),
         "### heading after ##": has("'###' dated heading appears after"),
         "open-questions table sync": has("missing from the Open questions table") or has("is not Status: open"),
         "open entry with no Revisit:": has("no Revisit:"),
@@ -459,7 +490,6 @@ def test_checker_rules(base):
         "DEF-15: table routing, ./ normalized, a prose mention does not count":
             none_has("docs/ROUTED.md", "not referenced")
             and any("docs/ORPHAN.md" in e and "not referenced" in e for e in found),
-        "DEF-18: (N) numbering": has("heading numbering"),
         "DEF-22: wrong case": has("docs/Archive/BANNER.md"),
         "DEF-22: a file with a trailing slash": has("docs/archive/BANNER.md/"),
         "DEF-22: right case and a real directory are quiet": not any(
@@ -472,7 +502,7 @@ def test_checker_rules(base):
     h = base / "rollover fixture"
     (h / "docs" / "log").mkdir(parents=True)
     (h / "docs" / "DECISIONS.md").write_text(
-        "## Open questions\n\n## Fields\n\n## D-001 \u2014 a\nStatus: active   Verdict: adopted\n",
+        "## Open questions\n\n## Fields\n\n## D-001 \u2014 a\nStatus: active\n",
         encoding="utf-8")
     (h / "CLAUDE.md").write_text("nothing to route\n", encoding="utf-8")
     (h / "README.md").write_text("fine\n", encoding="utf-8")
@@ -482,7 +512,7 @@ def test_checker_rules(base):
         "## 2097-02-01 \u2014 second period, first entry\nDecisions: none\nDocs: none\n\n"
         "## 2097-02-02 \u2014 second period, last entry\nDecisions: none\nDocs: none\nState: current\n",
         encoding="utf-8")
-    ctx = check_docs.Ctx(h, dict(check_docs.CONFIG))
+    ctx = check_docs.Ctx(h)
     f1 = []
     check_docs.run_generic_rules(ctx, f1)
     check("rules: DEF-27 State: on the last entry only is fine",

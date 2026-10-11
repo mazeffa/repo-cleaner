@@ -35,7 +35,7 @@ def main():
 
     try:
         import check_docs
-        entries = check_docs.log_entries(check_docs.Ctx(home, dict(check_docs.CONFIG)))
+        entries = check_docs.log_entries(check_docs.Ctx(home))
         if entries:
             heading = entries[-1][1]
             print(heading)

@@ -77,7 +77,7 @@ that looks more authoritative than it is does more harm than no checker.
 Only the doc files themselves and an empty `.repo-clean` marker. The checker exists once, in
 the plugin (D-015) — no copy is vendored into your repo — and the hook runs the one shipped
 with the same plugin version as themselves. Nothing is installed into git: no commit hook,
-no `core.hooksPath`, no `.gitignore` (D-021). A project set up by an older release may still
+no `core.hooksPath`, no `.gitignore` (D-025). A project set up by an older release may still
 have `scripts/hooks/pre-commit`; it is no longer used, and you can delete it and run
 `git config --unset core.hooksPath`.
 

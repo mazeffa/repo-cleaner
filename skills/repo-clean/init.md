@@ -1,16 +1,16 @@
 # init
 
-Scaffold the doc system in a folder that doesn't have one yet — a **home** (D-018), not
+Scaffold the doc system in a folder that doesn't have one yet — a **home** (D-023), not
 necessarily the repo root.
 
 Never commit, stash, stage, or change git settings (including `.gitignore` and
 `core.hooksPath`) at any step. If something looks like it needs one of those, say so and
-let the user do it (D-021).
+let the user do it (D-025).
 
 ## 1. Refuse nesting, and check granularity
 
 Walk up from the target folder. If a `.repo-clean` marker exists at or above it, refuse:
-homes don't nest (D-012/D-018). Say where the existing home is.
+homes don't nest (D-023). Say where the existing home is.
 
 If the target is a repo root with two or more child folders that each carry their own
 `README.md` or tracker file (`MASTER_TRACKING.md`, `STATUS.md`, `CHANGELOG.md`, etc.), don't
@@ -94,7 +94,7 @@ If a derived filename collides with an existing file, pause and ask before writi
 ## 6. Scaffold
 
 Write the empty `.repo-clean` marker file first — its presence is the whole declaration of
-where the home is (D-018).
+where the home is (D-023).
 
 **`CLAUDE.md`** (new section if the file exists, else the whole file):
 
@@ -135,13 +135,17 @@ Every `Status: open` entry below, in one place.
 
 ## Fields
 
-- **Status: `active` | `superseded` | `open`** — lifecycle.
-- **Verdict: `adopted` | `rejected` | `unresolved`** — what happened to the approach.
+- **Status: `active` | `superseded` | `rejected` | `open`** — one field.
+  - `active`: in force; follow it.
+  - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the replacement.
+  - `rejected`: considered, never in force; carries no `Supersedes:` or `Superseded-by:` link.
+    Don't propose it again without new evidence.
+  - `open`: undecided; needs `Revisit:` and a row in the Open-questions table.
 
 Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`.
 
 ## D-001 — Adopt the repo-clean doc system
-Status: active   Verdict: adopted   Date: <today>
+Status: active   Date: <today>
 Decision: Track decisions here, route questions through CLAUDE.md, log work in
 docs/log/<year>.md, and keep the repo-clean checker passing.
 Why: <one line — why this repo needed it>

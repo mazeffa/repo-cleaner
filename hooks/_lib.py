@@ -55,7 +55,7 @@ def find_home(cwd):
 
 def find_homes_nearby(cwd, depth=2):
     """Homes up to `depth` levels below cwd, for a session opened above them. Not a general
-    scan - D-018 only globs two levels down from where the session already is."""
+    scan - D-023 only globs two levels down from where the session already is."""
     p = Path(cwd)
     found = set()
     for level in range(1, depth + 1):
