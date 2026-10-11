@@ -8,26 +8,28 @@ at or above the cwd, or a bad --root) or on any unhandled exception. Prints one 
 finding either way. With no --root, the home is the nearest `.repo-clean` marker at or above
 the current folder.
 
-Rules (stable string ids, used in inline suppression comments; D-027(7)):
+Rules (stable string ids, used in inline suppression comments; D-029(7)):
   decisions-integrity   Unique IDs in the decision register, closed-vocabulary Status
                          read from the entry body only, symmetric supersession
                          (every id in Supersedes:/Superseded-by: is checked, not just
                          the first).
-  log-fields-resolve    docs/log/*.md 'Decisions:'/'Docs:' fields resolve to real ids/
-                         real .md paths; a field's value may wrap onto following lines.
-                         Only .md targets are checked (D-027(5)) - a missing dated output
+  log-fields-resolve    The newest log entry's 'Decisions:'/'Docs:' fields resolve to real
+                         ids/real .md paths; a field's value may wrap onto following lines.
+                         Older entries are history: the files they name may have moved.
+                         Only .md targets are checked (D-029(5)) - a missing dated output
                          file or a renamed script is routine, not a broken doc link.
   outside-repo-paths    No out-of-repo path in a living doc. The default catches paths under
                          a home folder: C:\Users\, ~, /home, /Users, /root, and Git Bash
-                         /<letter>/Users or /<letter>/home (D-027(4)).
+                         /<letter>/Users or /<letter>/home (D-029(4)).
   paths-exist           Backtick-quoted .md paths in living docs must exist, checked
                          case-exactly regardless of OS; a trailing '/' requires a directory.
                          Non-.md targets (scripts, data, generated output) are not checked
-                         (D-027(5)).
+                         (D-029(5)).
   log-grammar           At least one dated entry; log heading grammar; every entry carries
                          Decisions: and Docs:. State:/Next: lines are history, not checked
-                         (D-027(6)).
-  open-questions-sync   Open-questions table <-> Status: open entries, Revisit: required.
+                         (D-029(6)).
+  work-table            docs/WORK.md exists and every row has an ID, a Type (bug/task/idea)
+                         and a Status (open/done/dropped).
   routing-coverage      Every living doc is referenced in the routing file's table
                          (table rows only, a leading './' normalized).
 
@@ -37,7 +39,7 @@ heading or field name inside a fence is never mistaken for real content.
 Suppression:
   1. EXEMPT_DIRS                - whole directories, always exempt.
   2. ROUTING_EXEMPT_TOPDIRS     - docs/<topdir> exempt from routing-coverage only.
-  3. PATH_SUPPRESSED_PREFIXES   - generated output, never a doc link (D-027(5)).
+  3. PATH_SUPPRESSED_PREFIXES   - generated output, never a doc link (D-029(5)).
   4. <!-- check-docs: ignore <rule-id> --> - on a line, for outside-repo-paths and
      paths-exist; anywhere in a docs/ file, exempts that file from routing-coverage.
      The other rules have no in-text escape.
@@ -52,15 +54,16 @@ LIVING_ROOTS = ("CLAUDE.md", "README.md")
 DOCS_DIR = "docs"
 EXEMPT_DIRS = ("docs/archive", "docs/log")
 DECISIONS_FILE = "docs/DECISIONS.md"
-DEFECTS_FILE = "docs/DEFECTS.md"
+WORK_FILE = "docs/WORK.md"
+WORK_TYPES = ("bug", "task", "idea")
+WORK_STATUSES = ("open", "done", "dropped")
 ID_PREFIX = "D-"
-STATUS_VOCAB = ("active", "superseded", "rejected", "open")
-OPEN_QUESTIONS_SECTION = ("## Open questions", "## Fields")
+STATUS_VOCAB = ("active", "superseded", "rejected")
 LOG_DIR = "docs/log"
 ROUTING_FILE = "CLAUDE.md"
 ROUTING_EXEMPT_TOPDIRS = ("archive", "log", "research")
 OUTSIDE_PATH_RE = (
-    r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-027(4)); other drives are shared
+    r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-029(4)); other drives are shared
     r"|~[\\/]"                           # ~/ or ~\
     r"|(?:^|[\s`(\[])/(?:home|Users|root)/"          # unix absolute home dirs
     r"|(?:^|[\s`(\[])/[A-Za-z]/(?:Users|home)/"      # Git Bash /c/Users, /c/home
@@ -272,7 +275,7 @@ def candidate_path(ctx, token, known_roots):
 
 def docs_field_paths(ctx, value, known_roots):
     """Tokens out of a `Docs:` field value that look confidently like paths to
-    documentation. Only a token ending in '.md' counts (D-027(5)): a version number,
+    documentation. Only a token ending in '.md' counts (D-029(5)): a version number,
     section number, script, data file, or generated output is skipped, since a missing
     dated output file or a renamed script is routine, not a broken doc link. 'none',
     URLs, and Windows drive paths are always skipped."""
@@ -333,7 +336,10 @@ def check_decisions_integrity(ctx, errors, docs):
         status = fields.get("Status")
         if VERDICT_RE.search("\n".join(body)):
             verdict_ids.append(eid)
-        if status not in STATUS_VOCAB:
+        if status == "open":
+            errors.append(f"{DECISIONS_FILE}: {eid} Status: open is retired (D-029) - "
+                          f"make it a {WORK_FILE} item, or decide it")
+        elif status not in STATUS_VOCAB:
             errors.append(f"{DECISIONS_FILE}: {eid} bad/missing Status: {(status or '')!r}")
         sb_val = fields.get("Superseded-by", "")
         sp_val = fields.get("Supersedes", "")
@@ -345,9 +351,9 @@ def check_decisions_integrity(ctx, errors, docs):
             supersedes[eid] = id_re.findall(sp_val)
     if verdict_ids:
         errors.append(
-            f"{DECISIONS_FILE}: {len(verdict_ids)} entries still carry Verdict: (retired, D-026): "
+            f"{DECISIONS_FILE}: {len(verdict_ids)} entries still carry Verdict: (retired, D-029): "
             f"{', '.join(verdict_ids)} - adopted: delete it; rejected and never in force: "
-            "Status: rejected; unresolved and not superseded: Status: open")
+            f"Status: rejected; unresolved: a {WORK_FILE} item")
     reported_pairs = set()
     for eid, targets in superseded_by.items():
         for target in targets:
@@ -377,7 +383,7 @@ def check_log_fields_resolve(ctx, errors, docs):
     prefix = re.escape(ID_PREFIX)
     id_re = re.compile(prefix + r"\d+")
     known_roots = top_level_names(ctx)
-    for name, heading, body in log_entries(ctx):
+    for name, heading, body in log_entries(ctx)[-1:]:  # older entries are history (D-029(7))
         fields = parse_fields(body)
         if ctx.decision_ids is not None and "Decisions" in fields:
             for d in id_re.findall(fields["Decisions"]):
@@ -400,7 +406,7 @@ def check_outside_repo_paths(ctx, errors, docs):
 
 
 def is_doc_target(s):
-    """True for a path this rule should still validate (D-027(5)): a markdown file, or
+    """True for a path this rule should still validate (D-029(5)): a markdown file, or
     a markdown file's own directory-shaped mistake ('foo.md/'). False for a script, data
     file, generated output, or plain directory reference - those are not documentation
     links, and a missing one is routine."""
@@ -439,19 +445,26 @@ def log_entries(ctx):
     return out
 
 
+def work_rows(text):
+    """(line number, stripped cells) for each data row of the work table; the header row
+    (first cell 'ID') and the separator row are skipped."""
+    rows = []
+    for n, line in enumerate(text.splitlines(), 1):
+        s = line.strip()
+        if s.startswith("|"):
+            cells = [c.strip() for c in s.split("|")[1:-1]]
+            if cells and cells[0] != "ID" and not all(re.fullmatch(r":?-+:?", c) for c in cells):
+                rows.append((n, cells))
+    return rows
+
+
 def open_items(root):
-    """What is waiting, read from the files that own it (D-027(a)): each `Status: open`
-    decision and each defect heading (a fixed defect is deleted), as 'ID - title'.
-    A missing file yields nothing."""
-    out = []
-    p = root / DECISIONS_FILE
-    if p.exists():
-        out += [h[3:].strip() for _, h, _, fields in decision_entries(read_doc(p))
-                if fields.get("Status") == "open"]
-    p = root / DEFECTS_FILE
-    if p.exists():
-        out += [line[4:].strip() for line in read_doc(p).splitlines() if line.startswith("### DEF-")]
-    return out
+    """What is to do (D-029(a)): each open row of the work list, as 'ID - item'. A missing
+    file yields nothing; the work-table rule reports it."""
+    p = root / WORK_FILE
+    if not p.exists():
+        return []
+    return [f"{c[0]} — {c[1]}" for _, c in work_rows(read_doc(p)) if len(c) > 3 and c[3] == "open"]
 
 
 def check_log_grammar(ctx, errors, docs):
@@ -498,31 +511,15 @@ def check_log_grammar(ctx, errors, docs):
                 errors.append(f"{log.name}: entry '{head}' missing a Docs: line")
 
 
-def check_open_questions_sync(ctx, errors, docs):
-    start, end = OPEN_QUESTIONS_SECTION
-    p = ctx.root / DECISIONS_FILE
+def check_work_table(ctx, errors, docs):
+    p = ctx.root / WORK_FILE
     if not p.exists():
+        errors.append(f"{WORK_FILE}: file does not exist")
         return
-    prefix = re.escape(ID_PREFIX)
-    id_re = prefix + r"\d+"
-    text = read_doc(p)
-    m = re.search(rf"^{re.escape(start)}\n(.*?)^{re.escape(end)}", text, flags=re.M | re.S)
-    if not m:
-        errors.append(f"{DECISIONS_FILE}: '{start}' ... '{end}' section not found")
-        return
-    table_ids = set(re.findall(rf"\|\s*({id_re})\s*\|", m.group(1)))
-
-    open_ids = set()
-    for eid, _, _, fields in decision_entries(text):
-        if fields.get("Status") == "open":
-            open_ids.add(eid)
-            if not fields.get("Revisit", "").strip():
-                errors.append(f"{DECISIONS_FILE}: {eid} is Status: open but has no Revisit: trigger")
-
-    for eid in sorted(open_ids - table_ids):
-        errors.append(f"{DECISIONS_FILE}: {eid} is Status: open but missing from the Open questions table")
-    for eid in sorted(table_ids - open_ids):
-        errors.append(f"{DECISIONS_FILE}: {eid} is in the Open questions table but is not Status: open")
+    for n, c in work_rows(read_doc(p)):
+        if len(c) != 6 or not c[0] or c[2] not in WORK_TYPES or c[3] not in WORK_STATUSES:
+            errors.append(f"{WORK_FILE}:{n}: bad row - needs ID | Item | Type ({'/'.join(WORK_TYPES)}) "
+                          f"| Status ({'/'.join(WORK_STATUSES)}) | Added | Closed")
 
 
 def check_routing_coverage(ctx, errors, docs):
@@ -551,7 +548,7 @@ GENERIC_RULES = (
     check_outside_repo_paths,
     check_paths_exist,
     check_log_grammar,
-    check_open_questions_sync,
+    check_work_table,
     check_routing_coverage,
 )
 

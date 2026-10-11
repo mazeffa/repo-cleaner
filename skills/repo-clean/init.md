@@ -5,7 +5,7 @@ necessarily the repo root.
 
 Never commit, stash, stage, or change git settings (including `.gitignore` and
 `core.hooksPath`) at any step. If something looks like it needs one of those, say so and
-let the user do it (D-027(1)).
+let the user do it (D-029(1)).
 
 ## 1. Refuse nesting, and check granularity
 
@@ -39,9 +39,9 @@ user about which files to have:
 | `.repo-clean` | Home marker, empty |
 | `CLAUDE.md` | Routing table and rules |
 | `README.md` | What it is, how to run it |
-| `docs/DECISIONS.md` | What we believe and why; what's waiting (`Status: open`) |
-| `docs/DEFECTS.md` | What is broken |
-| `docs/log/<year>.md` | What happened; the last entry is where work left off |
+| `docs/WORK.md` | What to do, and what's been done: bugs, tasks, ideas |
+| `docs/DECISIONS.md` | What we decided, and why |
+| `docs/log/<year>.md` | What happened; each entry is true as of its date |
 | `docs/archive/` and its `README.md` | Rationale, banner-marked |
 | `docs/research/<subject>.md` | Evidence, optional, one per subject |
 
@@ -54,11 +54,11 @@ decision in the new register.
 
 **Existing trackers.** For each one, offer the user a choice:
 
-- **Adopt** — write its current state and next steps into the new log's first entry as
-  prose, make each waiting item an `open` decision, then archive the tracker with a banner. Don't leave it beside the new
-  files: that gives one job two homes.
+- **Adopt** — write its current state into the new log's first entry as prose, make each
+  item still to do a `docs/WORK.md` row, then archive the tracker with a banner. Don't leave
+  it beside the new files: that gives one job two homes.
 - **Convert** — move its content into the standard files (decisions to `DECISIONS.md`,
-  defects to `DEFECTS.md`, history to the log), then archive it the same way.
+  bugs and to-dos to `WORK.md`, history to the log), then archive it the same way.
 
 ## 4. Rules to adapt into CLAUDE.md
 
@@ -89,9 +89,9 @@ where the home is (D-023).
 | Question | Authority |
 |---|---|
 | What this is, how to run it | `README.md` |
-| What we believe and why (D-NNN), and what's waiting (`Status: open`) | `docs/DECISIONS.md` |
-| What is broken | `docs/DEFECTS.md` |
-| What happened, and where work left off | `docs/log/<year>.md` — the last entry |
+| What to do, and what's been done (bugs, tasks, ideas) | `docs/WORK.md` |
+| What we decided, and why (D-NNN) | `docs/DECISIONS.md` |
+| What happened | `docs/log/<year>.md` — the last entry; each entry is true as of its date |
 | <one row per research subject> | `docs/research/<subject>.md` |
 
 Every question has exactly one authoritative file. If no row matches, ask before creating a
@@ -109,6 +109,8 @@ document.
   other doc points to it — never repeats it.
 - If two docs assert the same fact differently, surface the contradiction — don't reconcile
   it silently.
+- When a bug turns up, a step is put off, or an item is finished, update `docs/WORK.md` then:
+  add the row, or set its Status and Closed date. Never delete a row.
 - The repo-clean checker must exit 0; it runs at session start and at the end of
   `/repo-clean maintain`, which writes the log when you ask ("log this") or say the session
   is over.
@@ -122,22 +124,15 @@ document.
 
 This file is authoritative for **what we believe and why**.
 
-## Open questions
-
-Every `Status: open` entry below, in one place.
-
-| ID | Question | Revisit |
-|---|---|---|
-
 ## Fields
 
-- **Status: `active` | `superseded` | `rejected` | `open`** — one field.
+- **Status: `active` | `superseded` | `rejected`** — one field.
   - `active`: in force; follow it.
   - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the replacement.
   - `rejected`: considered, never in force; carries no `Supersedes:` or `Superseded-by:` link.
     Don't propose it again without new evidence.
-  - `open`: undecided, or wanted and not yet taken up (D-019); needs `Revisit:` and a row in
-    the Open-questions table.
+
+There is no `open` or `pending`: something undecided or wanted is a row in `docs/WORK.md`.
 
 Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`.
 
@@ -148,16 +143,20 @@ docs/log/<year>.md, and keep the repo-clean checker passing.
 Why: <one line — why this repo needed it>
 ```
 
-**`docs/DEFECTS.md`**:
+**`docs/WORK.md`**:
 
 ```markdown
-# Known defects
+# Work
 
-This file is authoritative for **what is broken**. Each defect: `### DEF-NN — title`, a
-`Status:` line (`confirmed` or `reported`), what goes wrong, and when it gets fixed. When it
-is fixed, delete the entry; the log entry for the fix names it.
+This file is authoritative for **what to do, and what's been done**: bugs, tasks and ideas.
 
-## Open
+One row per item, and a row is never deleted. `Type` is `bug`, `task` or `idea`. `Status` is
+`open`, `done` or `dropped`; closing an item sets its status and fills `Closed`. IDs are
+`W-NN`, in order.
+
+| ID | Item | Type | Status | Added | Closed |
+|---|---|---|---|---|---|
+<one row per item lifted from an adopted tracker, if any>
 ```
 
 **`docs/log/<year>.md`**:
@@ -166,17 +165,17 @@ is fixed, delete the entry; the log entry for the fix names it.
 > **Format for new entries** (append-only; never edit an entry): `## YYYY-MM-DD [(N)] —
 > headline`, `(N)` only when more than one entry shares a date. Then `Decisions:` (D-NNN this
 > entry touched, or `none`) and `Docs:` (files changed), and prose: what happened and where
-> work left off. Waiting work is an `open` decision, not a line here. An entry is what someone
-> needs to resume — typically 5 to 15 lines — not a narrative of the session.
+> work left off. Work still to do is a `docs/WORK.md` row, not a line here. An entry is what
+> someone needs to resume — typically 5 to 15 lines — not a narrative of the session.
 
 # <year> log
 
 ## <today> — Doc system adopted
 
 Decisions: D-001
-Docs: CLAUDE.md, docs/DECISIONS.md, docs/DEFECTS.md
+Docs: CLAUDE.md, docs/DECISIONS.md, docs/WORK.md
 
-Doc system scaffolded; checker passing. <adopted tracker's state and next steps, if any>
+Doc system scaffolded; checker passing. <adopted tracker's state, if any>
 ```
 
 **`docs/research/<subject>.md`** (only for subjects a routing row actually names):

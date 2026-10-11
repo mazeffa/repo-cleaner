@@ -2,23 +2,16 @@
 
 This file is authoritative for **what we believe and why**.
 
-## Open questions
-
-Every `Status: open` entry below, in one place.
-
-| ID | Question | Revisit |
-|---|---|---|
-| D-028 | Deploy to Azure DevOps | when the team is ready |
-
 ## Fields
 
-- **Status: `active` | `superseded` | `rejected` | `open`** — one field.
+- **Status: `active` | `superseded` | `rejected`** — one field.
   - `active`: in force; follow it.
   - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the replacement.
   - `rejected`: considered, never in force; carries no `Supersedes:` or `Superseded-by:` link.
     Don't propose it again without new evidence.
-  - `open`: undecided, or wanted and not yet taken up (D-019); needs `Revisit:` and a row in
-    the Open-questions table.
+
+There is no `open` or `pending`: something undecided or wanted and not yet taken up is a row in
+`docs/WORK.md` (D-029).
 
 Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`.
 
@@ -27,7 +20,7 @@ Status: active   Date: 2026-09-18
 Decision: Track decisions here, route questions through CLAUDE.md, log work in
 docs/log/2026.md, and run the repo-clean checker from this repo's own
 `skills/repo-clean/scripts/check_docs.py` working-tree copy (D-015). How the checker is
-enforced is D-027's; commits are not gated.
+enforced is D-029's; commits are not gated.
 Why: The plugin did not use its own system, so every design decision lived only in chat
 and nothing tested whether the system is pleasant to live with.
 
@@ -76,8 +69,9 @@ rather than writing their own — is the only proposal that stops the agent bein
 from authoring the artifact used to check it. Untested either way.
 
 ## D-007 — Log known defects in docs/DEFECTS.md
-Status: active   Date: 2026-09-18
-Decision: A new routed file, `docs/DEFECTS.md`, owns "what is broken and its status".
+Status: superseded   Date: 2026-09-18
+Superseded-by: D-029
+Decision: A new routed file, docs/DEFECTS.md, owns "what is broken and its status".
 Why: An adversarial pass found 22 defects and there was no routing row that owned them, so
 they existed only in a chat transcript — the exact failure this system exists to prevent,
 in this repo. A README section was the alternative; rejected because the list churns as
@@ -101,7 +95,7 @@ git-dependent workflow tool.
 ## D-009 — This repo's own docs ship public, as the worked example
 Status: superseded   Date: 2026-09-19
 Superseded-by: D-011
-Decision: `docs/DECISIONS.md`, `docs/DEFECTS.md`, and `docs/log/` stay tracked and public.
+Decision: `docs/DECISIONS.md`, docs/DEFECTS.md, and `docs/log/` stay tracked and public.
 Only generated review transcripts (`.council/`) and bytecode are ignored.
 Why: The plugin's claim is that it runs on itself; the defect list and log are the only
 evidence a visitor can check. The cost is ~26KB of unused files in each user's plugin
@@ -242,7 +236,7 @@ Decision: The system is measured by one outcome: someone opens a project they ha
 touched in months and is working within a minute, reading nothing but what the tool prints.
 That makes the current log entry and the session-start line that prints it the load-bearing
 part, and everything else supporting. A rule stays only if breaking it would make the model
-hallucinate or redo work. Which checker rules pass that test is D-027(7)'s list.
+hallucinate or redo work. Which checker rules pass that test is D-029(7)'s list.
 "Contradictions between files" named in an earlier
 draft of this decision is not a checker rule; it is the manual pass in `maintain.md` step 6.
 Why: D-006 asked whether this is more than a structural linter and could not be settled
@@ -269,10 +263,11 @@ under one folder is not the tree walk D-012 rejected. Without (c), every existin
 goes silent on upgrade.
 
 ## D-019 — Enhancements are open decisions
-Status: active   Date: 2026-09-19
+Status: superseded   Date: 2026-09-19
+Superseded-by: D-029
 Decision: A wanted improvement not yet taken up is a decision entry with exactly
 `Status: open` and a `Revisit:` line, listed in the Open-questions
-table. No enhancement tracker file; `docs/DEFECTS.md` holds only what is broken.
+table. No enhancement tracker file; docs/DEFECTS.md holds only what is broken.
 Why: The table already exists and `open-questions-sync` already checks it; DEF-23's own
 text said an idea like this should be "deferred to a decision entry".
 
@@ -358,7 +353,7 @@ genuinely does not fit, the tool asks and the user decides case by case; the exc
 recorded in that project's register. The one in-text escape from a rule that misfires is the
 `<!-- check-docs: ignore RULE -->` comment on the line. (3) Undoing `reorganize`'s own
 edits (`git restore` of the files it moved or rewrote, deleting the copies it created) is not
-one of the git actions D-027(1) rules out; `git reset --hard` is never used.
+one of the git actions D-029(1) rules out; `git reset --hard` is never used.
 Why: Code in a project is code the project's last editor chose, and running it because a
 session opened there is a way for a repo to run anything on a teammate's machine. The add-on
 file was also the only thing that could widen or disable a rule, so it was the one way two
@@ -374,7 +369,7 @@ Decision: Same belief as D-018 (a) and (b), without (c). (a) The marker `.repo-c
 empty file; its presence is the whole declaration. (b) The hooks and the checker find the
 home by walking up from the working directory (the checker: from the current folder when
 `--root` is not given) to the nearest marker. When none is found, the session-start hook
-globs two levels down for marked homes and names them (D-027(e)); the checker exits 2,
+globs two levels down for marked homes and names them (D-029(e)); the checker exits 2,
 since nothing was checked. A folder with `CLAUDE.md` and `docs/log/` but no marker is not a home, and there is
 no `--migrate`.
 Why: (c) existed so installs from before the marker kept working on upgrade. That window is
@@ -441,7 +436,8 @@ machinery (three hook files, the session registry, about 400 test lines) was the
 two sessions had to agree on.
 
 ## D-026 — One Status field; Verdict retired
-Status: active   Date: 2026-10-10
+Status: superseded   Date: 2026-10-10
+Superseded-by: D-029
 Decision: A decision carries one closed-vocabulary field, `Status: active | superseded |
 rejected | open` (meanings in Fields above). `Verdict:` is retired. The checker keeps one
 aggregated finding per register that still carries it, naming the entries and the conversion:
@@ -457,8 +453,9 @@ per entry, keeps an upgrading home to a single line; the finding is permanent so
 vocabulary, the reader, migration cost) agreed on deleting the field.
 
 ## D-027 — The log is history; nothing stores current state
-Status: active   Date: 2026-10-11
+Status: superseded   Date: 2026-10-11
 Supersedes: D-016, D-024, D-025
+Superseded-by: D-029
 Decision: Restates what survives of D-016, D-024 and D-025, and stops storing current state
 in the log.
 (1) Git is storage: no commit hook, no `core.hooksPath`, nothing keyed on a repo, and `init`
@@ -472,7 +469,7 @@ can reach them.
 (5) Link resolution applies only to links pointing at documentation; links to data files and
 generated outputs are not checked.
 (6) The log is append-only dated history. No entry carries `State:` or `Next:`, and no entry is
-edited. Current state is read from its owners: git, `plugin.json`, `docs/DEFECTS.md` and the
+edited. Current state is read from its owners: git, `plugin.json`, docs/DEFECTS.md and the
 open decisions. Work waiting on a trigger is an `open` decision with `Revisit:` (D-019). Where
 work left off is the last entry's dated prose. A "Next Steps" heading is no longer banned. Old
 `State:`/`Next:` lines in existing logs stay as history and are not findings.
@@ -528,3 +525,74 @@ Decision: Production deploy moves from GitHub to Azure DevOps (README Install), 
 places the repo. Not done yet.
 Why: Carried over from the last `Next:` line the log held (D-027(6)); it is the one waiting
 item that was not a git or plugin chore.
+
+## D-029 — One work list; decisions are only decisions
+Status: active   Date: 2026-10-11
+Supersedes: D-007, D-019, D-026, D-027
+Decision: Restates D-027 with a work list added, and D-026's one Status field without `open`.
+(1) Git is storage: no commit hook, no `core.hooksPath`, nothing keyed on a repo, and `init`
+and `reorganize` never commit, stash, stage or change git settings, including `.gitignore`.
+(2) Every home gets D-022(2)'s fixed file set, which now includes `docs/WORK.md` and no
+docs/DEFECTS.md.
+(3) No PowerShell anywhere in the plugin, for any reason, including as a fallback shell: Git
+Bash is required, and a machine without it runs no hooks and cannot say so.
+(4) The outside-path rule flags only paths under a user's home directory; lakehouse URLs,
+database server names and corporate network shares are allowed, because everyone on the team
+can reach them.
+(5) Link resolution applies only to links pointing at documentation; links to data files and
+generated outputs are not checked.
+(6) The log is append-only dated history; each entry is true as of its date. No entry carries
+`State:` or `Next:`, and no entry is edited. Current state is read from its owners: git,
+`plugin.json`, `docs/WORK.md` and the register. Where work left off is the last entry's dated
+prose. A "Next Steps" heading is not banned. Old `State:`/`Next:` lines in existing logs stay
+as history and are not findings.
+(7) A checker rule stays only if breaking it leaves a doc that Claude trusts saying something
+false or ambiguous. Seven rules pass: `decisions-integrity` (a register that misnames its own
+supersession has Claude following a replaced decision), `log-fields-resolve` (the newest log
+entry naming a decision or doc that is not there sends Claude to invent it; older entries are
+history, and the files they name may have moved), `outside-repo-paths` (a path nobody else can
+open), `paths-exist` (a link to a missing `.md`), `log-grammar` (a bad heading or a missing
+`Decisions:`/`Docs:` makes an entry undatable or unresolvable), `work-table` (a work row with no
+ID, or a Type or Status outside the lists in (8), cannot be read as open or closed), and
+`routing-coverage` (a doc no row names is not found). `open-questions-sync` is dropped with the
+open decisions it kept in sync. `archive-banner-paths` and `research-fields` stay dropped; the
+archive banner and the research `Status:`/`Date:` header are conventions, unenforced.
+(8) `docs/WORK.md` owns what to do and what's been done: one table, `ID | Item | Type | Status
+| Added | Closed`, Type `bug`, `task` or `idea`, Status `open`, `done` or `dropped`. A row is
+never deleted; closing one sets its Status and fills Closed. Claude writes it during work as
+things come up (a bug found, a step put off, something finished), the user writes it, and
+`maintain` sweeps the session for anything missed.
+(9) A decision carries one closed-vocabulary field, `Status: active | superseded | rejected`.
+There is no `open` or `pending`; an entry still marked `open` is a checker finding that points at
+the work list. `Verdict:` stays retired: the checker keeps one aggregated finding per register
+that still carries it, naming the entries and the conversion (adopted, delete it; rejected and
+never in force, `Status: rejected`; unresolved, a work item).
+(a) One hook, SessionStart. It prints, in order: each open work item by ID and title, or
+"nothing open in docs/WORK.md"; the last log entry's heading, how many days old it is, and its
+body; the plugin version; any checker finding. It never shells out to git: a home in a
+subfolder would report the whole repo, and a repo with no remote has no ahead/behind. It
+records nothing except offered.json, the folders already offered setup, so the offer fires once.
+A headless turn in a new folder can use that offer up; accepted. It never blocks. There is no
+end-of-response hook and no edit hook. SessionStart also runs in headless claude -p turns and
+prints there; the cost is accepted, and the fix belongs to the callers.
+(b) `maintain` is the one act that writes the docs' history. It writes the log from the
+current conversation when the user asks ("log this", "/repo-clean maintain") or says the
+session is over; nothing starts it at session start. Work rows are also written during work
+(8).
+(c) No session record and no code that reads transcripts. Claude Code's own transcript, kept
+30 days by default in the user's Claude projects folder, is where a session nobody logged can
+still be read by hand.
+(d) Doc findings are reported at session start and by `maintain`'s checker step; a doc edited
+in ordinary work is unchecked until one of those runs.
+(e) Opened above several homes, the hook prints one line naming them: the first three, then
+"and N more".
+(f) Scaffold text in homes set up earlier is point-in-time and is not rewritten. Apart from
+offered.json (a), the plugin never writes outside the target repo.
+(g) The old session-registry folder in the user's Claude settings area is dead and never read.
+Why: The plugin told Claude what happened last time and never what to do next. Work to do had
+no home: it became fake `open` decisions, which are not beliefs, or log prose that went stale —
+one item set aside in a session was lost that way. Bugs sat in their own file apart from other
+work, and a fixed bug was deleted, so nothing recorded it. One list with a status column holds
+bugs, tasks and ideas, keeps what was finished, and is the first thing a session sees. The open
+decisions it replaces needed a table kept in sync and a `Revisit:` trigger nobody checked.
+D-016's, D-024's, D-025's and D-027's other reasons stand as written there.

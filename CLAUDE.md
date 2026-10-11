@@ -8,9 +8,9 @@ This repo uses its own system.
 | Question | Authority |
 |---|---|
 | What this is, how to install and run it, what the checker can't catch | `README.md` |
-| What we believe and why (D-NNN), and what's waiting (`Status: open`) | `docs/DECISIONS.md` |
-| What is broken and its status | `docs/DEFECTS.md` |
-| What happened, and where work left off | `docs/log/2026.md` — the last entry |
+| What to do, and what's been done (bugs, tasks, ideas) | `docs/WORK.md` |
+| What we decided, and why (D-NNN) | `docs/DECISIONS.md` |
+| What happened | `docs/log/2026.md` — the last entry; each entry is true as of its date |
 | Routing logic, principles, vocabulary | `skills/repo-clean/SKILL.md` |
 | What each subcommand does | `skills/repo-clean/init.md`, `skills/repo-clean/maintain.md`, `skills/repo-clean/reorganize.md` |
 | An illustrative worked layout | `skills/repo-clean/example-layout.md` |
@@ -33,6 +33,8 @@ what the code currently does — say which one you mean.
   other doc points to it — never repeats it.
 - If two docs assert the same fact differently, surface the contradiction — don't reconcile
   it silently.
+- When a bug turns up, a step is put off, or an item is finished, update `docs/WORK.md` then:
+  add the row, or set its Status and Closed date. Never delete a row.
 - `python skills/repo-clean/scripts/check_docs.py` must exit 0 (D-015); SessionStart runs it
   and prints any finding. If you changed `hooks/` or the checker, run `python hooks/selftest.py`
   by hand (the one test command) — nothing runs it for you. If you edited `docs/`, ask to commit

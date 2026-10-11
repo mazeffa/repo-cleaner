@@ -1,7 +1,8 @@
 # maintain
 
-Write what this session did into the docs: route each fact to the file that owns it, write
-one log entry, then run the checker. This is the one act that writes the docs (D-027(b)).
+Write what this session did into the docs: route each fact to the file that owns it, bring
+the work list up to date, write one log entry, then run the checker. This is the one act that
+writes the log; work rows are also written as things come up (D-029(b)).
 
 It runs when the user asks (`/repo-clean maintain`, "log this") or says the session is over.
 Opened above several homes, run it once for each home the session changed, passing that
@@ -37,7 +38,10 @@ For each change, ask "what kind of fact is this?":
 
 - **Belief change** (a decision made, reversed, or confirmed) → a new `D-NNN` entry. If it
   reverses or replaces an earlier entry, set `Superseded-by`/`Supersedes` symmetrically on
-  both, and update the Open-questions table if either entry's `Status: open` state changed.
+  both.
+- **Work** (a bug found, a step put off, an idea, an item finished or abandoned) →
+  `docs/WORK.md`: a new row, or an existing row's Status and Closed date. Sweep the whole
+  session for these; Claude should have added most as they came up, so this catches the rest.
 - **Event** (something happened: a run, a fix, a result) → an entry in the current log
   period file.
 - **Evidence** (new measurement, new research) → the subject's research doc, rewritten in
@@ -62,8 +66,8 @@ than interrupting per-item.
 One entry per `maintain` run. Add a
 `## YYYY-MM-DD [(N)] — headline` entry (grammar: `SKILL.md` Vocabulary) with
 `Decisions:` and `Docs:` fields. Write where you left off as prose; never edit an earlier
-entry. Anything waiting on a trigger becomes an `open` decision, not a line in the entry
-(`SKILL.md` Principles). When the detail is longer than an entry should hold, point to the
+entry. Anything left to do is a `docs/WORK.md` row, not a line in the entry (`SKILL.md`
+Principles). When the detail is longer than an entry should hold, point to the
 file that holds it.
 
 Write to `docs/log/<current year>.md`. If that file doesn't exist yet, create it with the
@@ -91,6 +95,6 @@ mode just list them:
 - A fact restated in 2+ living docs in different words, or a doc restating a code constant.
 - A doc line stating present-tense status that changes faster than docs are written —
   commit, push or deploy status, "currently running" — instead of dating it or pointing to
-  its owner (D-027(6)).
+  its owner (D-029(6)).
 - A research doc whose `Date:` is old relative to the code it describes.
-- An `open` decision whose `Revisit:` trigger has clearly already been met.
+- An `open` row in `docs/WORK.md` that the work has clearly already finished.

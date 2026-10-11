@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""SessionStart hook: print the home's last log entry (heading, age, body - read by the
-checker's own log parser), the open decisions and defects by headline, the plugin version, and
-any checker problems. No git (D-027(a)). Opened above several homes, print one line naming
+"""SessionStart hook: print the open items in docs/WORK.md, then the home's last log entry
+(heading, age, body - read by the checker's own parsers), the plugin version, and any checker
+problems. No git (D-029(a)). Opened above several homes, print one line naming
 them. Never blocks (SessionStart can't block anyway)."""
 import json
 import re
@@ -36,6 +36,11 @@ def main():
 
     try:
         import check_docs
+        items = check_docs.open_items(home)
+        for item in items:
+            print(f"Open: {item}")
+        if not items:
+            print("nothing open in docs/WORK.md")
         entries = check_docs.log_entries(check_docs.Ctx(home))
         if entries:
             heading = entries[-1][1]
@@ -48,8 +53,6 @@ def main():
             except ValueError:  # an impossible date: print no age, keep the body
                 pass
             print("\n".join(entries[-1][2]).strip())
-        for item in check_docs.open_items(home):
-            print(f"Open: {item}")
     except Exception as exc:
         print(f"repo-clean: checker import failed: {exc!r}")
     try:

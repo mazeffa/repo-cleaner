@@ -13,15 +13,29 @@ gets). Extra rows here, like the runbook, are one repo's choices on top of that 
 
 | Question | Authority |
 |---|---|
-| What this is, setup, how to run, known defects | `README.md` |
+| What this is, setup, how to run | `README.md` |
 | Weekly ops procedure | `docs/RUNBOOK.md` |
-| What we believe and why (D-NNN) | `docs/DECISIONS.md` |
-| What happened, and where work left off | `docs/log/<year>.md` — the last entry |
+| What to do, and what's been done (bugs, tasks, ideas) | `docs/WORK.md` |
+| What we decided, and why (D-NNN) | `docs/DECISIONS.md` |
+| What happened | `docs/log/<year>.md` — the last entry; each entry is true as of its date |
 | Model, features, accuracy | `docs/research/prediction_model.md` |
 | Route construction and the dispatch planner | `docs/research/dispatch_planner.md` |
 ```
 
 Rules: `SKILL.md` Principles.
+
+## Work list (docs/WORK.md)
+
+```markdown
+| ID | Item | Type | Status | Added | Closed |
+|---|---|---|---|---|---|
+| W-12 | Holiday weeks double-count returned stops in the backtest | bug | done | 2026-09-02 | 2026-09-13 |
+| W-14 | Run the Monday ingest and report on the fixed model | task | open | 2026-09-13 | |
+| W-15 | Try live traffic speeds as a feature | idea | open | 2026-09-13 | |
+| W-16 | Port the planner to the new routing API | task | dropped | 2026-08-20 | 2026-09-08 |
+```
+
+Grammar: `SKILL.md` Vocabulary.
 
 ## Decision register entry (docs/DECISIONS.md)
 
@@ -50,8 +64,8 @@ Docs: docs/DECISIONS.md, docs/research/backtest.md, docs/research/prediction_mod
 docs/research/dispatch_planner.md
 
 Left off: Phase 1 defects fixed and validated, backtest at +10.57 on-time pct/wk (paired vs
-pre-fix +3.75 ns / +3.02 mean10, 2.3 SE); the Monday ingest and report on the fixed model
-come next.
+pre-fix +3.75 ns / +3.02 mean10, 2.3 SE); the Monday ingest and report on the fixed model is
+W-14.
 
 **The question.** A full review of the prediction model and dispatch planner found six live
 defects, the most serious of which meant the +7.6 on-time pct/week backtest edge...

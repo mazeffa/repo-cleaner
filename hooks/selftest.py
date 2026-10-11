@@ -54,12 +54,13 @@ def make_home(parent, name, broken=False):
     (h / "docs" / "log").mkdir(parents=True)
     (h / ".repo-clean").write_text("", encoding="utf-8")
     (h / "CLAUDE.md").write_text(
-        "| Q | A |\n|---|---|\n| decisions | `docs/DECISIONS.md` |\n", encoding="utf-8")
+        "| Q | A |\n|---|---|\n| decisions | `docs/DECISIONS.md` |\n| work | `docs/WORK.md` |\n",
+        encoding="utf-8")
     (h / "README.md").write_text(
         "See `docs/NOT_THERE.md`.\n" if broken else "fine\n", encoding="utf-8")
-    (h / "docs" / "DECISIONS.md").write_text(
-        "## Open questions\n\n## Fields\n\n## D-001 — a\nStatus: active\n",
-        encoding="utf-8")
+    (h / "docs" / "DECISIONS.md").write_text("## D-001 — a\nStatus: active\n", encoding="utf-8")
+    (h / "docs" / "WORK.md").write_text(
+        "| ID | Item | Type | Status | Added | Closed |\n|---|---|---|---|---|---|\n", encoding="utf-8")
     (h / "docs" / "log" / "2026.md").write_text(
         "## 2026-01-01 — start\n\nDecisions: D-001\nDocs: CLAUDE.md\nLeft off: ok → next\n",
         encoding="utf-8")
@@ -181,7 +182,8 @@ def test_session_start(base):
     readme.write_text(readme.read_text(encoding="utf-8") + "\nSee `docs/GONE.md`.\n",
                       encoding="utf-8")
     out = ss("new4", "resume")
-    check("session_start: prints a checker finding", "checker found problems" in out, out)
+    check("session_start: prints a checker finding",
+          "checker found problems" in out and "GONE.md" in out, out)
 
     arrow = make_home(base, "arrow home")  # a → in the log must not crash on a cp1252 console
     rc, out, err = run_hook("session_start.py", {"session_id": "ar1", "cwd": str(arrow),
@@ -197,27 +199,25 @@ def test_session_start(base):
                                                  "source": "startup"}, base / "state_tricky")
     lines = out.splitlines()
     check("session_start: reads the log the checker's way (fence blanked), body then version",
-          lines[0] == "## 2026-01-01 \u2014 start" and lines[1].startswith("Last entry: 2026-01-01 (")
-          and lines[2:4] == ["Decisions: none", "Docs: none"] and "left off here" in out
+          lines[1] == "## 2026-01-01 \u2014 start" and lines[2].startswith("Last entry: 2026-01-01 (")
+          and lines[3:5] == ["Decisions: none", "Docs: none"] and "left off here" in out
           and "fenced" not in out and re.fullmatch(r"repo-clean \d+\.\d+\.\d+", lines[-1]), out)
-    check("session_start: no git output (D-027(a))", "git" not in out.lower(), out)
-    check("session_start: prints the last entry's heading, so an old State shows its date",
-          lines[0] == "## 2026-01-01 \u2014 start", out)
+    check("session_start: an empty work list says so, first", lines[0] == "nothing open in docs/WORK.md", out)
+    check("session_start: no git output (D-029(a))", "git" not in out.lower(), out)
     check("session_start: prints the entry's age in days",
           "2026-01-01" in out and "days ago" in out, out)
 
     waiting = make_home(base, "waiting home")
-    (waiting / "docs" / "DECISIONS.md").write_text(
-        "## Open questions\n\n| ID | Question | Revisit |\n|---|---|---|\n| D-002 | wait | later |\n\n"
-        "## Fields\n\n## D-001 — a\nStatus: active\n\n## D-002 — wait\nStatus: open\nRevisit: later\n",
-        encoding="utf-8")
-    (waiting / "docs" / "DEFECTS.md").write_text("# Known defects\n\n## Open\n\n### DEF-01 — broken\n",
-                                                 encoding="utf-8")
+    (waiting / "docs" / "WORK.md").write_text(
+        "| ID | Item | Type | Status | Added | Closed |\n|---|---|---|---|---|---|\n"
+        "| W-01 | broken | bug | open | 2026-01-01 | |\n"
+        "| W-02 | fixed | bug | done | 2026-01-01 | 2026-01-02 |\n"
+        "| W-03 | later | idea | open | 2026-01-01 | |\n", encoding="utf-8")
     _, out, _ = run_hook("session_start.py", {"session_id": "w1", "cwd": str(waiting),
                                               "source": "startup"}, base / "state_waiting")
-    check("session_start: prints an Open: line per open decision and defect",
-          "Open: D-002 — wait" in out and "Open: DEF-01 — broken" in out
-          and "Open: D-001" not in out, out)
+    check("session_start: one Open: line per open work item, before the log entry",
+          out.splitlines()[:3] == ["Open: W-01 — broken", "Open: W-03 — later", "## 2026-01-01 — start"]
+          and "W-02" not in out and "nothing open" not in out, out)
 
     unset_repo = base / "réviser projet sans config"
     unset_repo.mkdir()
@@ -333,21 +333,16 @@ def test_checker_rules(base):
     (tmp / "docs" / "archive" / "BANNER.md").write_text("archived\n", encoding="utf-8")
 
     (tmp / "docs" / "DECISIONS.md").write_text(
-        "## Open questions\n\n"
-        "| ID | Question | Revisit |\n"
-        "|---|---|---|\n"
-        "| D-999 | ghost row, not an open entry below | never |\n\n"
-        "## Fields\n\n"
         "## D-001 \u2014 a\n"
         "Status: active extra words   Superseded-by: D-002\n\n"
         "## D-002 \u2014 b\n"
         "Status: superseded\n\n"
-        # D-026: the legacy field is one aggregated finding, naming every entry that still has it.
+        # D-029(9): the legacy field is one aggregated finding, naming every entry that still has it.
         "## D-003 \u2014 c\n"
-        "Status: open   Verdict: unresolved\n\n"
+        "Status: active   Verdict: adopted\n\n"
         "## D-780 \u2014 legacy field after a single space\n"
         "Status: active Verdict: rejected\n\n"
-        # D-026: rejected needs no Superseded-by; superseded still does.
+        # D-029(9): rejected needs no Superseded-by; superseded still does.
         "## D-781 \u2014 rejected, no link needed\n"
         "Status: rejected\n\n"
         "## D-782 \u2014 superseded, names no replacement\n"
@@ -355,9 +350,8 @@ def test_checker_rules(base):
         # a wrong-level heading is flagged, not silently skipped
         "### D-783 \u2014 wrong heading level\n"
         "Decision: x\n\n"
-        # DEF-09 fire case: a title containing "Revisit" must not satisfy the real
-        # Revisit: field requirement - the body has none, so this must still fire.
-        "## D-778 \u2014 Revisit later\n"
+        # D-029: open is retired; the finding points at the work list.
+        "## D-778 \u2014 still waiting\n"
         "Status: open\n\n"
         # DEF-08 quiet case: prose mentions Superseded-by: with a single space, and a
         # dangling-looking id, but must not be parsed as a real field.
@@ -377,6 +371,7 @@ def test_checker_rules(base):
         "| Doc | Path |\n"
         "|---|---|\n"
         "| routed doc | `./docs/ROUTED.md` |\n"
+        "| work | `docs/WORK.md` |\n"
         "| checker | `scripts/tools/check_docs.py --root .` |\n\n"
         "See `docs/DOES_NOT_EXIST.md` and `C:\\Users\\x\\.claude\\plans\\p.md`.\n"
         "and a unix one `/home/me/notes.md`, and a Git Bash one `/c/Users/me/notes.md`.\n"
@@ -390,10 +385,19 @@ def test_checker_rules(base):
         "By the way, `docs/ORPHAN.md` is mentioned here in prose, not the table.\n",
         encoding="utf-8",
     )
-    (tmp / "README.md").write_text("fine. Shared drive D:\\data\\lake\\x.csv is fine (D-027(4)).\n", encoding="utf-8")
+    (tmp / "README.md").write_text("fine. Shared drive D:\\data\\lake\\x.csv is fine (D-029(4)).\n", encoding="utf-8")
     (tmp / "docs" / "ROUTED.md").write_text("routed via the table with a leading ./\n", encoding="utf-8")
     (tmp / "docs" / "MOJIBAKE.md").write_bytes(b"# t\n\xff\xfe not utf-8\n")
     (tmp / "docs" / "ORPHAN.md").write_text("unrouted doc\n", encoding="utf-8")
+    (tmp / "docs" / "WORK.md").write_text(
+        "| ID | Item | Type | Status | Added | Closed |\n"
+        "|:---|---|---|---|---|---:|\n"
+        "| W-01 | good | task | done | 2099-01-01 | 2099-01-02 |\n"
+        "| W-02 | bad type | chore | open | 2099-01-01 | |\n"
+        "| W-03 | bad status | bug | pending | 2099-01-01 | |\n"
+        "|  | no id | idea | open | 2099-01-01 | |\n"
+        "| W-05 | too few cells | idea | open |\n",
+        encoding="utf-8")
     (tmp / "docs" / "FENCED.md").write_text(
         "# fenced\n"
         "Real content.\n"
@@ -423,7 +427,7 @@ def test_checker_rules(base):
     (tmp / "docs" / "log" / "2098-08.md").write_text(
         "## 2098-01-01 \u2014 first entry\n"
         "Decisions: none\n"
-        "Docs: none\n\n"
+        "Docs: docs/GONE_OLD.md\n\n"
         "body text with an outside path C:\\Users\\x\\plan.md\n\n"
         "### 2098-02-02 old-style heading after the first '##' heading\n\n"
         "## 2098-01-01 \u2014 duplicate date and no N\n"
@@ -448,11 +452,11 @@ def test_checker_rules(base):
     for label, ok in {
         "bad/missing Status shows the value": has("D-001", "bad/missing Status: 'active extra words'")
             and has("D-780", "bad/missing Status: 'active Verdict: rejected'"),
-        "D-026: legacy Verdict is one aggregated finding naming its entries":
+        "D-029(9): legacy Verdict is one aggregated finding naming its entries":
             len([e for e in found if "still carry Verdict:" in e]) == 1
             and has("2 entries still carry Verdict:", "D-003", "D-780"),
-        "D-026: Status: rejected without Superseded-by is quiet": none_has("D-781"),
-        "D-026: Status: superseded without Superseded-by fires": has("D-782", "names no Superseded-by"),
+        "D-029(9): Status: rejected without Superseded-by is quiet": none_has("D-781"),
+        "D-029(9): Status: superseded without Superseded-by fires": has("D-782", "names no Superseded-by"),
         "a ### decision heading is flagged": has("D-783", "decision heading must be '## D-NNN'"),
         "an unclosed fence is one finding, and nothing inside it fires":
             len([e for e in found if "unclosed code fence" in e]) == 1
@@ -465,13 +469,18 @@ def test_checker_rules(base):
         "log grammar": has("log heading grammar violated"),
         "duplicate log heading": has("duplicate log heading"),
         "### heading after ##": has("'###' dated heading appears after"),
-        "open-questions table sync": has("missing from the Open questions table") or has("is not Status: open"),
-        "open entry with no Revisit:": has("no Revisit:"),
+        "D-029: Status: open is retired and points at the work list":
+            has("D-778", "Status: open is retired", "docs/WORK.md") and none_has("D-778", "bad/missing"),
+        "work-table: a good row and the header and separator rows are quiet":
+            none_has("WORK.md:1:") and none_has("WORK.md:2:") and none_has("WORK.md:3:"),
+        "work-table: bad Type, bad Status, no ID and too few cells each fire":
+            all(has(f"WORK.md:{n}:", "bad row") for n in (4, 5, 6, 7)),
+        "log-fields-resolve: an older entry's missing doc is history, not a finding": none_has("GONE_OLD"),
         "unrouted doc": has("not referenced in"),
         "Decisions: references an unknown id": has("Decisions: references unknown"),
         "abs path in CLAUDE.md (unix, Git Bash, drive)": has("CLAUDE.md:", "absolute/outside-repo path"),
-        "D-027(4): a non-home drive path is quiet": none_has("README.md:", "absolute/outside-repo path"),
-        "D-027(4): a C:\\Users\\ path still fires": has("2098-08.md:", "absolute/outside-repo path"),
+        "D-029(4): a non-home drive path is quiet": none_has("README.md:", "absolute/outside-repo path"),
+        "D-029(4): a C:\\Users\\ path still fires": has("2098-08.md:", "absolute/outside-repo path"),
         "a one-line multi-field entry parses (D-003)": none_has("D-003", "bad/missing"),
         "DEF-02: a backticked command with a flag is not a missing path": none_has("check_docs.py"),
         "DEF-05: a wrapped Docs: value is read to its last line": has("more-missing.md"),
@@ -480,8 +489,6 @@ def test_checker_rules(base):
         "DEF-07: asymmetric supersession fires": any(
             "D-010" in e and "D-012" in e and "not symmetric" in e for e in found),
         "DEF-08: prose 'Superseded-by:' is not a field": none_has("D-777") and none_has("D-889"),
-        "DEF-09: 'Revisit' in a title does not satisfy the field":
-            any("D-778" in e and "no Revisit:" in e for e in found),
         "DEF-10: fenced content is not read": none_has("D-999", "bad/missing"),
         "DEF-15: table routing, ./ normalized, a prose mention does not count":
             none_has("docs/ROUTED.md", "not referenced")
@@ -494,14 +501,14 @@ def test_checker_rules(base):
     }.items():
         check(f"rules: {label}", ok, found if not ok else "")
 
-    # D-027(6): an upgraded home's old State:/Next: lines and "Next Steps" headings are history,
+    # D-029(6): an upgraded home's old State:/Next: lines and "Next Steps" headings are history,
     # not findings - on any entry, in any period file.
     h = base / "upgrade fixture"
     (h / "docs" / "log").mkdir(parents=True)
-    (h / "docs" / "DECISIONS.md").write_text(
-        "## Open questions\n\n## Fields\n\n## D-001 \u2014 a\nStatus: active\n",
-        encoding="utf-8")
-    (h / "CLAUDE.md").write_text("| Q | A |\n|---|---|\n| d | `docs/DECISIONS.md` |\n", encoding="utf-8")
+    (h / "docs" / "DECISIONS.md").write_text("## D-001 \u2014 a\nStatus: active\n", encoding="utf-8")
+    (h / "docs" / "WORK.md").write_text("| ID | Item | Type | Status | Added | Closed |\n", encoding="utf-8")
+    (h / "CLAUDE.md").write_text("| Q | A |\n|---|---|\n| d | `docs/DECISIONS.md` |\n"
+                                 "| w | `docs/WORK.md` |\n", encoding="utf-8")
     (h / "README.md").write_text("fine\n\n## Next Steps\n", encoding="utf-8")
     (h / "docs" / "log" / "2097-01.md").write_text(
         "## 2097-01-01 \u2014 first period\nDecisions: none\nDocs: none\nState: old\nNext: old\n",
@@ -514,19 +521,14 @@ def test_checker_rules(base):
     ctx = check_docs.Ctx(h)
     f1 = []
     check_docs.run_generic_rules(ctx, f1)
-    check("rules: D-027(6) old State:/Next: lines and a Next Steps heading are no finding", f1 == [], f1)
+    check("rules: D-029(6) old State:/Next: lines and a Next Steps heading are no finding", f1 == [], f1)
 
-    o = base / "open items fixture"
-    (o / "docs").mkdir(parents=True)
-    check("rules: open_items with no register and no DEFECTS.md is empty", check_docs.open_items(o) == [])
-    (o / "docs" / "DEFECTS.md").write_text("## Open\n\n### DEF-01 \u2014 broken\n", encoding="utf-8")
-    check("rules: open_items reads DEFECTS.md with no register",
-          check_docs.open_items(o) == ["DEF-01 \u2014 broken"], check_docs.open_items(o))
-    (o / "docs" / "DECISIONS.md").write_text(
-        "## D-001 \u2014 a\nStatus: active\n\n## D-002 \u2014 wait\nStatus: open\n", encoding="utf-8")
-    (o / "docs" / "DEFECTS.md").unlink()
-    check("rules: open_items reads open decisions with no DEFECTS.md",
-          check_docs.open_items(o) == ["D-002 \u2014 wait"], check_docs.open_items(o))
+    o = make_home(base, "open items home")
+    (o / "docs" / "WORK.md").unlink()
+    fo = []
+    check_docs.run_generic_rules(check_docs.Ctx(o), fo)
+    check("rules: a missing WORK.md is a finding, and open_items is empty",
+          "docs/WORK.md: file does not exist" in fo and check_docs.open_items(o) == [], fo)
 
     # D-020: a .md the routing table names outside docs/ is read like any living doc.
     (h / "sub").mkdir()
