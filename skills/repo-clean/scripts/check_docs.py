@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generic docs hygiene checker. Stdlib only. A config-driven core; there is no per-project
+r"""Generic docs hygiene checker. Stdlib only. A config-driven core; there is no per-project
 add-on file (D-022) - the checker never runs project code.
 
 Exit 0 on success, printing one line stating that shape was verified and content
@@ -17,9 +17,9 @@ Rules (stable string ids, used in inline suppression comments and in output; D-0
                          real .md paths; a field's value may wrap onto following lines.
                          Only .md targets are checked (D-016(b)) - a missing dated output
                          file or a renamed script is routine, not a broken doc link.
-  outside-repo-paths    No out-of-repo path in a living doc. The default catches Windows
-                         drive paths, ~, /home, /Users, /root, and Git Bash /<letter>/Users
-                         or /<letter>/home.
+  outside-repo-paths    No out-of-repo path in a living doc. The default catches paths under
+                         a home folder: C:\Users\, ~, /home, /Users, /root, and Git Bash
+                         /<letter>/Users or /<letter>/home (D-016(a)).
   paths-exist           Backtick-quoted .md paths in living docs must exist, checked
                          case-exactly regardless of OS; a trailing '/' requires a directory.
                          Non-.md targets (scripts, data, generated output) are not checked
@@ -62,7 +62,7 @@ CONFIG = {
     "routing_exempt_topdirs": ("archive", "log", "research"),
     "banned_header_re": r"^#+.*\bNext Steps\b",
     "outside_path_re": (
-        r"(?<![\w\\])[A-Za-z]:\\\w"          # drive letter, not the tail of a word
+        r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-016(a)); other drives are shared
         r"|~[\\/]"                           # ~/ or ~\
         r"|(?:^|[\s`(\[])/(?:home|Users|root)/"          # unix absolute home dirs
         r"|(?:^|[\s`(\[])/[A-Za-z]/(?:Users|home)/"      # Git Bash /c/Users, /c/home

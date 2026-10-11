@@ -280,8 +280,9 @@ the checker reads. Rejected: (a) leave it — the table is the contract; (c) let
 `living_roots` in its own config, which is the per-home knob D-013 rules out.
 
 ## D-021 — Fold-in from transcripts; no commit hook
-Status: active   Verdict: adopted   Date: 2026-09-28
+Status: superseded   Verdict: adopted   Date: 2026-09-28
 Supersedes: D-014
+Superseded-by: D-025
 Decision: Replaces D-014's session-end design. Built in 0.9.0.
 (1) Git is storage. No commit hook, no `core.hooksPath`, nothing keyed on a repo; the unit
 is the home (D-018). `init` and `reorganize` never commit, stash, stage or change git
@@ -393,3 +394,33 @@ Why: D-017 set the test and applied it by rule id; this applies it again to the 
 since, and writes the list in one place (the checker's docstring points here), so a rule's
 presence is always a decision rather than an accident. Each dropped rule cost code, a config
 key and a selftest fixture to guard against a failure nobody had had.
+
+## D-025 — Capture by request; the one hook only reads
+Status: active   Verdict: adopted   Date: 2026-10-10
+Supersedes: D-021
+Decision: Keeps D-021 (1) git is storage, (3) one act writes the docs, (8) the fixed file
+set, and (10) no PowerShell, as written there. Replaces the rest:
+(a) One hook, SessionStart. It prints the last log entry's heading, how many days old that
+entry is, its `State:` and `Next:`, the plugin version, and any checker finding. It records
+nothing except offered.json, the folders already offered setup, so the offer fires once. A
+headless turn in a new folder can use that offer up; accepted. It never blocks. There is no
+end-of-response hook and no edit hook. SessionStart also runs in headless claude -p turns and
+prints there; the cost is accepted, and the fix belongs to the callers.
+(b) `maintain` writes the log from the current conversation when the user asks ("log this",
+"/repo-clean maintain") or says the session is over. Nothing starts it at session start.
+(c) No session record and no code that reads transcripts. Claude Code's own transcript, kept
+30 days by default in the user's Claude projects folder, is where a session nobody logged can
+still be read by hand.
+(d) Doc findings are reported at session start and by `maintain`'s checker step; a doc edited
+in ordinary work is unchecked until one of those runs.
+(e) Opened above several homes, the hook prints one line naming them: the first three, then
+"and N more".
+(f) Scaffold text in homes set up earlier is point-in-time and is not rewritten; the log is
+the truth. The plugin never writes outside the target repo.
+(g) The old session-registry folder in the user's Claude settings area is dead and never read.
+Why: debate 3 and the LLM council, 2026-10-10. D-021(4) put a fold-in ahead of the first
+minute D-017 measures, and its queue grew by one with every automated session: the
+session-start line told each headless debate turn to fold in before other work. The
+turn-end block D-021(6) added was never seen working under the real runner. The capture
+machinery (three hook files, the session registry, about 400 test lines) was the only state
+two sessions had to agree on.

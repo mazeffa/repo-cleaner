@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Self-test for hooks/. Stdlib only. `python hooks/selftest.py` exits 0 or asserts.
-Run by hand; nothing runs it automatically (D-021).
+Run by hand; nothing runs it automatically.
 
 Drives each hook via subprocess against a scratch copy of this repo (a known-good doc
 tree), under a temp dir whose path has both a non-ASCII char and a space, so path
-handling bugs surface here instead of in a real session. Registry/offer state is
+handling bugs surface here instead of in a real session. Offer state is
 isolated per test via REPO_CLEAN_HOME so this never touches a real user's data.
 Also holds the checker's rule tests (test_checker_rules) - the one test command.
 """
@@ -15,8 +15,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -68,8 +66,7 @@ def make_home(parent, name, broken=False):
     return h
 
 
-EVENT_OF = {"post_tool_use.py": "PostToolUse", "stop.py": "Stop",
-            "session_start.py": "SessionStart"}
+EVENT_OF = {"session_start.py": "SessionStart"}
 
 
 def payload(name, fields):
@@ -95,133 +92,17 @@ def run_hook(name, data, home, input_text=None, extra_env=None, args=(), hooks_d
     return out.returncode, out.stdout, out.stderr
 
 
-def records(state, session_id):
-    """{home folder name: record} for every home this session has a record in."""
-    out = {}
-    for f in (state / "homes").glob(f"*/{session_id}.json"):
-        rec = json.loads(f.read_text(encoding="utf-8"))
-        out[Path(rec["home"]).name] = rec
-    return out
-
-
-def edit(state, sid, cwd, path, hooks_dir=None):
-    run_hook("post_tool_use.py", {"session_id": sid, "cwd": str(cwd),
-                                  "tool_input": {"file_path": str(path)}}, state,
-             hooks_dir=hooks_dir)
-
-
-def stop(state, sid, cwd, active=False, transcript=None, hooks_dir=None):
-    # a transcript that does not exist, unless a test supplies one: the fixture's own path
-    # may exist on the machine running this
-    return run_hook("stop.py", {"session_id": sid, "cwd": str(cwd), "stop_hook_active": active,
-                                "transcript_path": str(transcript or state / "gone.jsonl")},
-                    state, hooks_dir=hooks_dir)
-
-
-def record_file(state, sid, name):
-    for f in (state / "homes").glob(f"*/{sid}.json"):
-        if Path(json.loads(f.read_text(encoding="utf-8"))["home"]).name == name:
-            return f
-
-
-def patch_record(state, sid, name, **fields):
-    """Set (or, for None, remove) fields on this session's record for the home `name`."""
-    f = record_file(state, sid, name)
-    rec = json.loads(f.read_text(encoding="utf-8"))
-    for k, v in fields.items():
-        rec.pop(k, None) if v is None else rec.__setitem__(k, v)
-    f.write_text(json.dumps(rec), encoding="utf-8")
-
-
-def aged_session(state, sid, home, hooks_dir=None):
-    """Age every file in `home` by 60 s and give `sid` a record whose last check was 30 s ago,
-    so only a change made afterwards can look newer than the check (the fixture's own fresh
-    files would otherwise beat the seed and pass whether or not the feature works)."""
-    t = time.time()
-    for p in home.rglob("*"):
-        if p.is_file():
-            os.utime(p, (t - 60, t - 60))
-    edit(state, sid, home, home / "model.R", hooks_dir)  # a non-doc edit: makes the record
-    patch_record(state, sid, home.name, dirty=False, checked_at=t - 30)
-
-
-def fold(state, home, *args, sid=None):
-    env = {"CLAUDE_CODE_SESSION_ID": sid} if sid else None
-    return run_hook("fold.py", None, state, input_text="", args=(args[0], str(home), *args[1:]),
-                    extra_env=env)
-
-
-def test_post_tool_use(base):
-    top = base / "two homes"
-    a, b = make_home(top, "proj-a"), make_home(top, "proj-b")
-    state = base / "state_ptu"
-
-    edit(state, "s1", top, a / "README.md")
-    edit(state, "s1", top, b / "model.R")
-    edit(state, "s1", top, a / "README.md")
-    edit(state, "s1", top, top / "loose.md")
-    run_hook("post_tool_use.py", {"session_id": "s1", "cwd": str(top), "tool_name": "NotebookEdit",
-                                  "tool_input": {"notebook_path": str(b / "nb.ipynb")}}, state)
-    recs = records(state, "s1")
-    check("post_tool_use: credits each file to its own home, opened above both",
-          set(recs) == {"proj-a", "proj-b"}, recs)
-    check("post_tool_use: a record exists per home, notebook_path included",
-          all(r.get("home") for r in recs.values()), recs)
-    check("post_tool_use: a .md edit marks the home for checking, other files don't",
-          recs["proj-a"].get("dirty") and not recs["proj-b"].get("dirty"), recs)
-
-
-
-
-def test_stop(base):
-    top = base / "stop homes"
-    a, b = make_home(top, "proj-a", broken=True), make_home(top, "proj-b", broken=True)
-    state = base / "state_stop"
-
-    rc, out, err = stop(state, "nosuch", base)
-    check("stop: outside every home, no edits - silent, nothing recorded",
-          rc == 0 and not out and not err and not records(state, "nosuch"), (rc, out, err))
-
-    rc, _, err = stop(state, "idle", a)
-    rec = records(state, "idle").get("proj-a", {})
-    check("stop: a session with no edits is recorded against its home",
-          rc == 0 and rec.get("last_stop") and rec.get("transcript"), (rc, err, rec))
-
-    edit(state, "r-only", top, b / "model.R")
-    rc, _, err = stop(state, "r-only", top)
-    check("stop: a code-only edit runs no checker, even in a broken home", rc == 0, err)
-    check("stop: the first edit seeds checked_at", "checked_at" in records(state, "r-only")["proj-b"])
-
-    edit(state, "md", top, a / "README.md")
-    rc, _, err = stop(state, "md", top)
-    check("stop: a .md edit in a broken home blocks", rc == 2 and "NOT_THERE" in err, (rc, err))
-    check("stop: only the home whose .md changed is checked", "proj-b" not in err, err)
-    rc, _, err = stop(state, "md", top, active=True)
-    check("stop: stop_hook_active lets the session stop", rc == 0, err)
-    rc, _, err = stop(state, "md", top)
-    check("stop: a failing check stays marked, so the next Stop blocks again", rc == 2, err)
-
-    edit(state, "md2", a, a / "README.md")
-    stop(state, "md2", a, active=True)
-    check("stop: a doc edited during the hook's own continuation stays marked",
-          records(state, "md2")["proj-a"].get("dirty"), records(state, "md2"))
-    edit(state, "md3", a, a / "README.md")
-    rc, _, _ = stop(state, "md3", a)
-    check("stop: a checker failure leaves dirty set",
-          rc == 2 and records(state, "md3")["proj-a"].get("dirty"), records(state, "md3"))
-
-
-def test_stop_broken_checker(base):
-    """The hooks never run a project's own copy of the checker (D-022): a corrupt one in the
+def test_project_checker_never_run(base):
+    """The hook never runs a project's own copy of the checker (D-022): a corrupt one in the
     project changes nothing."""
     repo = make_scratch_repo(base)
     (repo / "skills" / "repo-clean" / "scripts" / "check_docs.py").write_text(
         "raise RuntimeError('boom')\n", encoding="utf-8")
     state = base / "state_broken"
-    edit(state, "bc1", repo, repo / "README.md")
-    rc, out, err = stop(state, "bc1", repo)
-    check("stop: a project's own broken checker is never run", rc == 0 and "boom" not in err,
-          (rc, out, err))
+    rc, out, err = run_hook("session_start.py", {"session_id": "bc1", "cwd": str(repo),
+                                                 "source": "startup"}, state)
+    check("session_start: a project's own broken checker is never run",
+          rc == 0 and "boom" not in out + err, (rc, out, err))
 
 
 def test_plugin_core(base):
@@ -237,13 +118,10 @@ def test_plugin_core(base):
     (d / "check_docs.py").write_text("print('stub ran'); raise SystemExit(1)\n", encoding="utf-8")
     env = {"HOME": str(fake_home), "USERPROFILE": str(fake_home)}
     state = base / "state_plugincore"
-    run_hook("post_tool_use.py", {"session_id": "pc1", "cwd": str(repo),
-                                  "tool_input": {"file_path": str(repo / "README.md")}},
-             state, extra_env=env)
-    rc, out, err = run_hook("stop.py", {"session_id": "pc1", "cwd": str(repo)}, state,
-                            extra_env=env)
+    rc, out, err = run_hook("session_start.py", {"session_id": "pc1", "cwd": str(repo),
+                                                 "source": "startup"}, state, extra_env=env)
     check("plugin core: a higher cached version does not change which checker runs",
-          rc == 0 and "stub ran" not in err, (rc, err))
+          rc == 0 and "stub ran" not in out, (rc, out, err))
 
 
 def stub_plugin(base, source):
@@ -260,13 +138,6 @@ def test_failing_checker(base):
     stub2 = stub_plugin(base, 'import sys\nif __name__ == "__main__":\n'
                               '    print("stub says boom"); sys.exit(2)\n')
     home = make_home(top, "h1")
-    edit(state, "f1", home, home / "README.md", stub2)
-    before = records(state, "f1")["h1"]
-    rc, _, err = stop(state, "f1", home, hooks_dir=stub2)
-    rec = records(state, "f1")["h1"]
-    check("stop: a checker that exits 2 does not block", rc == 0, err)
-    check("stop: ...and the home stays marked, checked_at unchanged",
-          rec.get("dirty") and rec.get("checked_at") == before.get("checked_at"), rec)
     rc, out, _ = run_hook("session_start.py", {"session_id": "f2", "cwd": str(home),
                                                "source": "startup"}, state, hooks_dir=stub2)
     check("session_start: a checker that exits 2 is printed as the checker failing",
@@ -292,143 +163,9 @@ def test_failing_checker(base):
 
     missing = stub_plugin(base, "")
     (missing.parent / "skills" / "repo-clean" / "scripts" / "check_docs.py").unlink()
-    edit(state, "f4", home, home / "README.md", missing)
-    rc, _, err = stop(state, "f4", home, hooks_dir=missing)
-    check("stop: a missing checker is not recorded as clean and does not block",
-          rc == 0 and records(state, "f4")["h1"].get("dirty"), (rc, err))
     rc, out, _ = run_hook("session_start.py", {"session_id": "f5", "cwd": str(home),
                                                "source": "startup"}, state, hooks_dir=missing)
     check("session_start: a missing checker is printed", "checker not found" in out, out)
-
-
-def test_stop_any_change(base):
-    """Stop checks docs changed by any means (a script, a command, another window), not only
-    through the edit tool. Fixture files are aged and checked_at seeded 30 s back first."""
-    state = base / "state_anychange"
-    top = base / "anychange homes"
-
-    h = make_home(top, "broken", broken=True)
-    aged_session(state, "a1", h)
-    rc, _, err = stop(state, "a1", h)
-    check("stop: docs older than the last check, no edit - no check", rc == 0, err)
-    (h / "README.md").write_text("See `docs/NOT_THERE.md` again.\n", encoding="utf-8")
-    rc, _, err = stop(state, "a1", h)
-    check("stop: a doc rewritten by command is checked", rc == 2 and "NOT_THERE" in err, (rc, err))
-    rc, _, err = stop(state, "a1", h)
-    check("stop: ...and still blocks on the next turn", rc == 2, err)
-    (h / "README.md").write_text("fine\n", encoding="utf-8")
-    seeded = records(state, "a1")["broken"]["checked_at"]
-    rc, _, err = stop(state, "a1", h)
-    check("stop: once fixed it passes and checked_at moves",
-          rc == 0 and records(state, "a1")["broken"]["checked_at"] > seeded, (rc, err))
-
-    h = make_home(top, "log", broken=False)
-    aged_session(state, "a2", h)
-    log = h / "docs" / "log" / "2026.md"
-    log.write_text(log.read_text(encoding="utf-8") +
-                   "\n## 2026-01-02 — more\n\nDecisions: none\nDocs: none\nState: two\nNext: x\n",
-                   encoding="utf-8")
-    rc, _, err = stop(state, "a2", h)
-    check("stop: a second State: written into the log is caught", rc == 2 and "State:" in err,
-          (rc, err))
-
-    h = make_home(top, "routed", broken=False)
-    (h / "guide").mkdir()
-    (h / "guide" / "init.md").write_text("fine\n", encoding="utf-8")
-    with (h / "CLAUDE.md").open("a", encoding="utf-8") as f:
-        f.write("| guide | `guide/init.md` |\n")
-    aged_session(state, "a3", h)
-    (h / "guide" / "init.md").write_text("See `docs/GONE.md`.\n", encoding="utf-8")
-    rc, _, err = stop(state, "a3", h)
-    check("stop: a routed doc outside docs/ changed by command is caught",
-          rc == 2 and "GONE" in err, (rc, err))
-
-    h = make_home(top, "norecord", broken=True)
-    aged_session(state, "a4", h)
-    patch_record(state, "a4", "norecord", dirty=None, checked_at=None)
-    rc, _, err = stop(state, "a4", h)
-    check("stop: a record with neither checked_at nor dirty runs no check", rc == 0, err)
-
-    parent = base / "anychange parent"
-    h = make_home(parent, "proj", broken=True)
-    for p in h.rglob("*"):
-        if p.is_file():
-            os.utime(p, (time.time() - 60,) * 2)
-    edit(state, "a5", parent, h / "model.R")  # opened above the project; no doc edit yet
-    time.sleep(0.05)
-    (h / "README.md").write_text("See `docs/NOT_THERE.md` too.\n", encoding="utf-8")
-    rc, _, err = stop(state, "a5", parent)
-    check("stop: a project reached from a parent folder is checked for changes by command",
-          rc == 2, (rc, err))
-
-    # cannot be imported as a module, but as a script prints a finding and exits 1: newest_mtime
-    # fails closed, so the check still runs and the finding still blocks
-    stub = stub_plugin(base, 'import sys\nif __name__ != "__main__":\n    raise ImportError("stub")\n'
-                             'print("1 issue(s). NOT_THERE"); sys.exit(1)\n')
-    h = make_home(top, "noimport", broken=True)
-    aged_session(state, "a6", h, stub)
-    rc, _, err = stop(state, "a6", h, hooks_dir=stub)
-    check("stop: an unimportable checker fails newest_mtime closed - the check still runs",
-          rc == 2 and "NOT_THERE" in err, (rc, err))
-
-    # a checker that crashes at import (traceback on stderr, exit 1, nothing on stdout) is not a finding
-    crash = stub_plugin(base, 'raise ImportError("stub")\n')
-    h = make_home(top, "crash", broken=True)
-    edit(state, "a7", h, h / "README.md", crash)
-    before = records(state, "a7")["crash"]
-    rc, _, err = stop(state, "a7", h, hooks_dir=crash)
-    rec = records(state, "a7")["crash"]
-    check("stop: a checker that crashes is not a finding - exit 0, record still marked",
-          rc == 0 and rec.get("dirty") and rec.get("checked_at") == before.get("checked_at"),
-          (rc, err, rec))
-    rc, out, _ = run_hook("session_start.py", {"session_id": "a8", "cwd": str(h),
-                                               "source": "startup"}, state, hooks_dir=crash)
-    check("session_start: a crashed checker says the checker failed, not that docs have problems",
-          "checker import failed" in out and "checker itself failed" in out
-          and "found problems" not in out, out)
-
-    # a record with no checked_at: the first Stop seeds it, so a later change is caught
-    h = make_home(top, "seeded", broken=True)
-    aged_session(state, "a9", h)
-    patch_record(state, "a9", "seeded", checked_at=None)
-    rc, _, err = stop(state, "a9", h)
-    check("stop: a record with no checked_at is seeded at its first Stop",
-          rc == 0 and "checked_at" in records(state, "a9")["seeded"], (rc, err))
-    time.sleep(0.05)
-    (h / "README.md").write_text("See `docs/NOT_THERE.md` later.\n", encoding="utf-8")
-    rc, _, err = stop(state, "a9", h)
-    check("stop: ...and a later doc change is then caught", rc == 2 and "NOT_THERE" in err, (rc, err))
-
-    # two homes; the first check outlasts the (patched-down) budget, so the second is skipped and named
-    slow = stub_plugin(base, 'import sys, time\nif __name__ == "__main__":\n'
-                             '    time.sleep(1.5); sys.exit(0)\n')
-    stop_py = slow / "stop.py"
-    stop_py.write_text(stop_py.read_text(encoding="utf-8").replace("27 -", "2.5 -"), encoding="utf-8")
-    two = base / "budget homes"
-    h1, h2 = make_home(two, "b1"), make_home(two, "b2")
-    edit(state, "bu", two, h1 / "README.md", slow)
-    edit(state, "bu", two, h2 / "README.md", slow)
-    rc, _, err = stop(state, "bu", two, hooks_dir=slow)
-    left = [n for n, r in records(state, "bu").items() if r.get("dirty")]  # which home runs first is by hash
-    check("stop: a home skipped for time budget is named, exit 0, and stays marked",
-          rc == 0 and "1 home(s) not checked this turn" in err and len(left) == 1
-          and left[0] in err.splitlines()[-1], (rc, err, left))
-
-
-def test_records(base):
-    state = base / "state_records"
-    home = make_home(base, "records home")
-    edit(state, "rc1", home, home / "README.md")
-    record_file(state, "rc1", home.name).write_text("{not json", encoding="utf-8")
-    rc, out, err = stop(state, "rc1", home)
-    check("stop: a corrupt session record does not crash it", rc == 0, (out, err))
-    rc, _, _ = run_hook("session_start.py", {"session_id": "rc1", "cwd": str(home),
-                                             "source": "startup"}, state)
-    files = list((state / "homes").rglob("*"))
-    check("records: every record is valid JSON and no temp file is left behind",
-          rc == 0 and not any(f.suffix == ".tmp" for f in files)
-          and all(json.loads(f.read_text(encoding="utf-8")) is not None
-                  for f in files if f.suffix == ".json"), files)
 
 
 def test_session_start(base):
@@ -442,46 +179,14 @@ def test_session_start(base):
           f"State: {expect['State']}" in out and f"Next: {expect['Next']}" in out, out)
     check("session_start: prints the plugin version",
           re.search(r"^repo-clean \d+\.\d+\.\d+$", out, re.M), out)
-    check("session_start: nothing to fold in a fresh home", "not yet folded" not in out, out)
 
-    stop(state, "earlier1", repo)
-    stop(state, "earlier2", repo)
     ss = lambda sid, source: run_hook("session_start.py", {"session_id": sid, "cwd": str(repo),
                                                            "source": source}, state)[1]
-    out = ss("new1", "startup")
-    check("session_start: names un-folded sessions at startup",
-          "2 earlier session(s) not yet folded" in out and "fold.py" in out, out)
-    for source in ("resume", "clear", "compact"):
-        check(f"session_start: no fold-in on {source}", "not yet folded" not in ss("x", source))
-
-    rc, out, err = fold(state, repo, "list")
-    check("fold list: lists both", rc == 0 and "earlier1" in out and "earlier2" in out, (out, err))
-    stop(state, "late", repo)  # stops between list and done, so never listed
-    rc, _, err = fold(state, repo, "done", sid="folder")
-    check("fold done: refuses before the sessions have been read", rc == 3 and "earlier1" in err, err)
-    rc, out, err = fold(state, repo, "read")
-    check("fold read: transcripts that are gone are reported, and it exits 1",
-          rc == 1 and out.count("transcript gone") == 2, (rc, out, err))
-    rc, _, err = fold(state, repo, "done", sid="folder")
-    check("fold done: exits 0 once everything listed has been read", rc == 0, err)
-    check("session_start: DEF-34 - a session that stopped mid-fold-in is still waiting",
-          "1 earlier session(s) not yet folded" in ss("new2", "startup"))
-    stop(state, "folder", repo)
-    check("session_start: DEF-33 - the folding session does not come back",
-          "1 earlier session(s) not yet folded" in ss("new2b", "startup"))
-    stop(state, "earlier1", repo)
-    check("session_start: a folded session that kept working comes up again",
-          "2 earlier session(s) not yet folded" in ss("new3", "startup"))
-
     readme = repo / "README.md"
     readme.write_text(readme.read_text(encoding="utf-8") + "\nSee `docs/GONE.md`.\n",
                       encoding="utf-8")
     out = ss("new4", "resume")
     check("session_start: prints a checker finding", "checker found problems" in out, out)
-    edit(state, "new4", repo, repo / "model.R")
-    rc, _, err = stop(state, "new4", repo)
-    check("session_start: a problem that predates the session does not block its Stop",
-          rc == 0, err)
 
     arrow = make_home(base, "arrow home")  # a → in State: must not crash on a cp1252 console
     rc, out, err = run_hook("session_start.py", {"session_id": "ar1", "cwd": str(arrow),
@@ -497,8 +202,13 @@ def test_session_start(base):
                                                  "source": "startup"}, base / "state_tricky")
     lines = out.splitlines()
     check("session_start: reads the log the checker's way (fence blanked, inline Next:)",
-          lines[:2] == ["State: a", "Next: b"] and "fenced" not in out
-          and re.fullmatch(r"repo-clean \d+\.\d+\.\d+", lines[2]), out)
+          lines[0] == "## 2026-01-01 \u2014 start" and lines[1].startswith("Last entry: 2026-01-01 (")
+          and lines[2:4] == ["State: a", "Next: b"] and "fenced" not in out
+          and re.fullmatch(r"repo-clean \d+\.\d+\.\d+", lines[4]), out)
+    check("session_start: prints the last entry's heading, so an old State shows its date",
+          lines[0] == "## 2026-01-01 \u2014 start", out)
+    check("session_start: prints the entry's age in days",
+          "2026-01-01" in out and "days ago" in out, out)
 
     unset_repo = base / "réviser projet sans config"
     unset_repo.mkdir()
@@ -537,15 +247,10 @@ def test_find_home(base):
           find_homes_nearby(root))
 
     state = base / "state_shared_root"
-    rc, out, _ = run_hook("session_start.py", {"session_id": "sr0", "cwd": str(root),
-                                               "source": "startup"}, state)
-    check("session_start: above homes with nothing to fold, names them", "proj-a" in out, out)
-    for n in ("proj-a", "proj-b", "proj-c", "proj-d"):
-        stop(state, f"w-{n}", root / n)
     rc, out, _ = run_hook("session_start.py", {"session_id": "sr1", "cwd": str(root),
                                                "source": "startup"}, state)
-    check("session_start: above homes, one line with count, three names and N more",
-          "4 home(s)" in out and "and 1 more" in out and out.count("\n") == 1, out)
+    check("session_start: above homes, one line with three names and N more",
+          "proj-a" in out and "and 1 more" in out and out.count("\n") == 1, out)
 
 
 def test_launcher(base):
@@ -570,133 +275,14 @@ def test_launcher(base):
     out = run("stop", bare)
     check("run.sh: no Python - stop says so on stderr and exits 0",
           out.returncode == 0 and "no Python 3.8+ found" in out.stderr and not out.stdout, out)
-    out = run("stop", dict(os.environ, REPO_CLEAN_HOME=str(base / "state_launcher")), "{}")
+    out = run("session_start", dict(os.environ, REPO_CLEAN_HOME=str(base / "state_launcher")),
+              json.dumps({"cwd": str(empty)}))
     check("run.sh: with Python, it runs the hook", out.returncode == 0 and not out.stderr, out)
-
-
-def tline(who, content, ts=None, **extra):
-    d = {"type": who, "message": {"role": who, "content": content}}
-    if ts:
-        d["timestamp"] = ts
-    d.update(extra)
-    return json.dumps(d)
-
-
-OLD, FUTURE = "2020-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z"
-
-
-def test_fold_read(base):
-    """The transcript reader keeps words, edited paths and the user's answers, drops tool
-    output, and prints only what is newer than the last fold-in."""
-    home = make_home(base, "fold home")
-    t = base / "t.jsonl"
-    lines = [
-        tline("user", "fix the chart <system-reminder>noise</system-reminder>", OLD),
-        tline("assistant", [
-            {"type": "thinking", "thinking": "secret"},
-            {"type": "text", "text": "Fixed the axis."},
-            {"type": "tool_use", "id": "b1", "name": "Edit", "input": {"file_path": "C:/p/chart.R"}},
-            {"type": "tool_use", "id": "b2", "name": "Bash",
-             "input": {"command": "select * from patients"}}], OLD),
-        tline("user", [{"type": "tool_result", "tool_use_id": "b2", "content": "MRN 12345"}], OLD),
-        tline("assistant", [{"type": "text", "text": "subagent chatter"}], OLD, isSidechain=True),
-        tline("assistant", [{"type": "tool_use", "id": "q1", "name": "AskUserQuestion",
-                             "input": {"questions": []}}], OLD),
-        tline("user", [{"type": "tool_result", "tool_use_id": "q1",
-                        "content": 'User has answered: "Which?"="blue"'}], OLD),
-        "not json",
-    ]
-    t.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    state = base / "state_fold"
-    stop(state, "f1", home, transcript=t)
-    rc, out, err = fold(state, home, "list")
-    check("fold list: shows the waiting session", rc == 0 and "f1" in out, (out, err))
-    rc, out, err = fold(state, home, "read")
-    check("fold read: user and Claude words, edited paths",
-          rc == 0 and "[user] fix the chart" in out and "[claude] Fixed the axis." in out
-          and "[edited] C:/p/chart.R" in out, (out, err))
-    check("fold read: the user's answer to a question is kept",
-          '[user answer] User has answered: "Which?"="blue"' in out, out)
-    check("fold read: no tool output, commands, thinking, side chains or reminders",
-          not any(s in out for s in ("MRN", "patients", "secret", "subagent", "noise")), out)
-    check("fold read: a short session is one page", "-- more" not in out, out)
-    rc, _, err = fold(state, home, "done")
-    check("fold done: after a full read", rc == 0, err)
-
-    stop(state, "f1", home, transcript=t)
-    fold(state, home, "list")
-    rc, out, _ = fold(state, home, "read")
-    check("fold read: a stop with nothing new says so", rc == 0 and "nothing new" in out, out)
-    fold(state, home, "done")
-
-    with t.open("a", encoding="utf-8") as f:
-        f.write(tline("user", "beta has no timestamp") + "\n")
-        f.write(tline("user", "gamma is new",
-                      datetime.now(timezone.utc).isoformat(timespec="milliseconds")) + "\n")
-    time.sleep(0.05)
-    stop(state, "f1", home, transcript=t)
-    fold(state, home, "list")
-    with t.open("a", encoding="utf-8") as f:
-        f.write(tline("user", "delta came after list", FUTURE) + "\n")
-    rc, out, err = fold(state, home, "read")
-    check("fold read: after a fold-in, only the new entries - and one with no timestamp",
-          "gamma is new" in out and "beta has no timestamp" in out and "fix the chart" not in out,
-          (out, err))
-    check("fold read: an entry stamped after list waits for the next fold-in",
-          "delta came after list" not in out, out)
-    fold(state, home, "done")
-
-    state = base / "state_fold_long"
-    t2 = base / "long.jsonl"
-    t2.write_text("\n".join(tline("user", f"entry {i} " + "x" * 1500, OLD) for i in range(30)) + "\n",
-                  encoding="utf-8")
-    stop(state, "f2", home, transcript=t2)
-    fold(state, home, "list")
-    rc, out, _ = fold(state, home, "read")
-    check("fold read: a long session pages and says how to continue",
-          rc == 0 and "-- more:" in out and "entry 0 " in out and "entry 29 " not in out
-          and "--from" in out, out[-300:])
-    rc, _, err = fold(state, home, "done")
-    check("fold done: refuses after a partial read, naming the session", rc == 3 and "f2" in err, err)
-    for _ in range(10):
-        m = re.search(r"--from (\d+)", out)
-        if not m:
-            break
-        rc, out, _ = fold(state, home, "read", "--from", m.group(1))
-    check("fold read: --from reaches the last entry", "entry 29 " in out and "-- more" not in out, out[-300:])
-    rc, _, err = fold(state, home, "done")
-    check("fold done: succeeds once read to the end", rc == 0, err)
-
-    state = base / "state_fold_lost"
-    bad = base / "bad.jsonl"
-    bad.write_text('{"type": "summary"}\n', encoding="utf-8")
-    stop(state, "good", home, transcript=t)
-    stop(state, "bad", home, transcript=bad)
-    stop(state, "gone", home)
-    fold(state, home, "list")
-    rc, out, err = fold(state, home, "read")
-    check("fold read: one session read, one unreadable, one gone - it carries on",
-          rc == 0 and "[user] fix the chart" in out and "[session bad: unreadable" in out
-          and "[session gone: transcript gone" in out, (rc, out, err))
-    state = base / "state_fold_alllost"
-    stop(state, "bad", home, transcript=bad)
-    stop(state, "gone", home)
-    fold(state, home, "list")
-    rc, out, _ = fold(state, home, "read")
-    check("fold read: every session unreadable or gone - exits 1", rc == 1, (rc, out))
-
-    state = base / "state_fold_check"
-    stop(state, "c1", home, transcript=t)
-    rc, out, _ = fold(state, home, "list", "--check")
-    check("fold list --check: writes nothing", rc == 0 and "listed_stop" not in
-          json.dumps(records(state, "c1")), records(state, "c1"))
-    rc, out, _ = fold(state, home, "read")
-    check("fold read: still works after list --check", rc == 0 and "fix the chart" in out, out)
 
 
 def test_bad_input(base):
     state = base / "state_bad"
-    for hook in ("post_tool_use.py", "stop.py", "session_start.py"):
+    for hook in ("session_start.py",):
         for text in ("", "not json{{{", json.dumps({"foo": "bar"}), "[1, 2]"):
             rc, out, err = run_hook(hook, None, state, input_text=text)
             check(f"{hook}: bad stdin {text[:8]!r} exits 0", rc == 0, (out, err))
@@ -787,7 +373,7 @@ def test_checker_rules(base):
         "By the way, `docs/ORPHAN.md` is mentioned here in prose, not the table.\n",
         encoding="utf-8",
     )
-    (tmp / "README.md").write_text("fine\n", encoding="utf-8")
+    (tmp / "README.md").write_text("fine. Shared drive D:\\data\\lake\\x.csv is fine (D-016(a)).\n", encoding="utf-8")
     (tmp / "docs" / "ROUTED.md").write_text("routed via the table with a leading ./\n", encoding="utf-8")
     (tmp / "docs" / "MOJIBAKE.md").write_bytes(b"# t\n\xff\xfe not utf-8\n")
     (tmp / "docs" / "ORPHAN.md").write_text("unrouted doc\n", encoding="utf-8")
@@ -857,6 +443,8 @@ def test_checker_rules(base):
         "unrouted doc": has("not referenced in"),
         "Decisions: references an unknown id": has("Decisions: references unknown"),
         "abs path in CLAUDE.md (unix, Git Bash, drive)": has("CLAUDE.md:", "absolute/outside-repo path"),
+        "D-016(a): a non-home drive path is quiet": none_has("README.md:", "absolute/outside-repo path"),
+        "D-016(a): a C:\\Users\\ path still fires": has("2098-08.md:", "absolute/outside-repo path"),
         "a one-line multi-field entry parses (D-003)": none_has("D-003", "bad/missing"),
         "DEF-02: a backticked command with a flag is not a missing path": none_has("check_docs.py"),
         "DEF-05: a wrapped Docs: value is read to its last line": has("more-missing.md"),
@@ -938,17 +526,12 @@ def test_checker_rules(base):
 def main():
     with tempfile.TemporaryDirectory(prefix="repo_clean_selftest_") as tmp:
         base = Path(tmp)
-        test_post_tool_use(base)
-        test_stop(base)
-        test_stop_broken_checker(base)
+        test_project_checker_never_run(base)
         test_failing_checker(base)
-        test_stop_any_change(base)
-        test_records(base)
         test_session_start(base)
         test_find_home(base)
         test_plugin_core(base)
         test_launcher(base)
-        test_fold_read(base)
         test_bad_input(base)
         test_check_docs_no_home(base)
         test_checker_rules(base)

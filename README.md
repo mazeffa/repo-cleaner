@@ -2,17 +2,28 @@
 
 A Claude Code plugin that keeps a project's docs from rotting: one question, one
 authoritative file, tracked in a CLAUDE.md routing table, a `D-NNN` decision
-register, an append-only work log, and a stdlib checker. Session hooks record
-which sessions touched which project and run the checker when a doc changes;
-"fold-in" has Claude read earlier sessions and write what happened into the
-docs. Nothing touches git.
+register, an append-only work log, and a stdlib checker. One session
+hook prints the log's current state and any checker finding at session start;
+`/repo-clean maintain` writes a session's work into the docs when asked. Nothing touches git.
 
-This is the USAP data team's internal fork, hosted in Azure DevOps. It is not
-published and has no external users; the rule set answers to this team's work
-rather than the general case. See `docs/DECISIONS.md` D-011 for why, and D-015
-through D-024 for the current design.
+This is the USAP data team's internal fork, developed on GitHub and deployed from Azure
+DevOps. It is not published and has no external users; the rule set answers to this team's
+work rather than the general case. See `docs/DECISIONS.md` D-011 for why, and D-015
+through D-025 for the current design.
 
 ## Install
+
+### Development (GitHub)
+
+```
+/plugin marketplace add https://github.com/mazeffa/repo-cleaner
+/plugin install repo-clean@repo-clean
+```
+
+Updates: `/plugin marketplace update repo-clean` then `/plugin update repo-clean`. These pull
+only a pushed commit whose `plugin.json` version was bumped.
+
+### Production (Azure DevOps, at deploy)
 
 Clone the repo, then point Claude Code at your local copy:
 
@@ -34,7 +45,7 @@ install from a current one.
 
 ```
 /repo-clean init             # scaffold the doc system in a repo that doesn't have one
-/repo-clean maintain         # fold in: write earlier sessions' work into the docs, then check
+/repo-clean maintain         # log this session's work into the docs, then check
 /repo-clean maintain --check # the same analysis, read-only: report and change nothing
 /repo-clean reorganize       # migrate an existing messy docs tree into the system
 ```
@@ -61,15 +72,10 @@ Those need reading, which is what `maintain --check` step 6 is for. Treat a
 green run as "nothing is malformed", not "the docs are correct" — a checker
 that looks more authoritative than it is does more harm than no checker.
 
-A few effects of how the Stop hook decides a doc changed: a doc changed by another window or
-a `git pull` mid-session is checked at the end of your next turn, and blocks once per turn
-until fixed; and a session opened in one project that edits only a nested project is
-recorded in both.
-
 ## What gets installed into your repo
 
 Only the doc files themselves and an empty `.repo-clean` marker. The checker exists once, in
-the plugin (D-015) — no copy is vendored into your repo — and the hooks run the one shipped
+the plugin (D-015) — no copy is vendored into your repo — and the hook runs the one shipped
 with the same plugin version as themselves. Nothing is installed into git: no commit hook,
 no `core.hooksPath`, no `.gitignore` (D-021). A project set up by an older release may still
 have `scripts/hooks/pre-commit`; it is no longer used, and you can delete it and run

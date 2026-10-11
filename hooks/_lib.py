@@ -1,22 +1,13 @@
-"""Shared helpers for repo-clean's SessionStart/PostToolUse/Stop hooks and fold.py.
-Stdlib only. State lives outside the repo, so it works the same with or without git.
-
-The registry (D-021): one record per (home, session) under BASE_DIR/homes/<key>/, plus
-the last Stop it has had folded in ("folded_stop"). A record is un-folded while its
-"last_stop" is past "folded_stop". No age prune - a record stays until a fold-in has
-covered it, however long that takes.
+"""Shared helpers for repo-clean's SessionStart hook. Stdlib only. The only state outside
+the repo is offered.json: the folders already offered setup, so the offer fires once.
 """
-import hashlib
 import json
 import os
 import subprocess
 import sys
-import time
-from datetime import datetime
 from pathlib import Path
 
 BASE_DIR = Path(os.environ.get("REPO_CLEAN_HOME") or (Path.home() / ".claude" / "repo-clean"))
-HOMES_DIR = BASE_DIR / "homes"
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 # Every hook imports this module, so every hook can `import check_docs` (D-022: the plugin's
 # own checker, never a copy found in a project). Outside any try, so a bad path is loud.
@@ -39,14 +30,6 @@ def read_stdin_json():
     return data
 
 
-def local_time(ts):
-    return datetime.fromtimestamp(ts).astimezone().strftime("%Y-%m-%d %H:%M %Z")
-
-
-def _home_dir(home):
-    return HOMES_DIR / hashlib.sha1(normalize_cwd(home).encode("utf-8")).hexdigest()[:16]
-
-
 def _read_json(f):
     try:
         return json.loads(f.read_text(encoding="utf-8"))
@@ -59,49 +42,6 @@ def _write_json(f, data):
     tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")  # replace, so a crash never leaves half a record; pid, so two windows don't share one
     tmp.write_text(json.dumps(data), encoding="utf-8")
     os.replace(tmp, f)
-
-
-def load_session(home, session_id):
-    return _read_json(_home_dir(home) / f"{session_id}.json")
-
-
-def save_session(home, session_id, data):
-    data["home"] = str(home)
-    _write_json(_home_dir(home) / f"{session_id}.json", data)
-
-
-def session_homes(session_id):
-    """Every home this session has a record in, as (home, record) pairs."""
-    if not HOMES_DIR.is_dir():
-        return []
-    out = []
-    for f in sorted(HOMES_DIR.glob(f"*/{session_id}.json")):
-        rec = _read_json(f)
-        if rec.get("home"):
-            out.append((Path(rec["home"]), rec))
-    return out
-
-
-def add_file(session_id, home, rel_path):
-    rec = load_session(home, session_id)
-    if rel_path.lower().endswith(".md"):
-        rec["dirty"] = True  # a doc changed; the next Stop runs the checker for this home
-    rec.setdefault("checked_at", time.time())  # from here on, Stop also catches changes made by any means
-    save_session(home, session_id, rec)
-
-
-def unfolded_sessions(home):
-    """Records for this home whose last Stop is past their last folded one, oldest first.
-    Each is the record dict plus its session id under "id"."""
-    d = _home_dir(home)
-    if not d.is_dir():
-        return []
-    out = []
-    for f in d.glob("*.json"):
-        rec = _read_json(f)
-        if rec.get("last_stop", 0) > rec.get("folded_stop", 0):
-            out.append(dict(rec, id=f.stem))
-    return sorted(out, key=lambda r: r["last_stop"])
 
 
 def find_home(cwd):

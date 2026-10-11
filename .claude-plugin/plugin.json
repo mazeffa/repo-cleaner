@@ -1,9 +1,9 @@
 {
   "name": "repo-clean",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "author": {
     "name": "USAP Data Team"
   },
-  "description": "Keeps a project's docs as a one-question-one-authoritative-file system: init a routing table + decision register + append-only log, fold earlier sessions into it, reorganize a messy existing project into it, or audit one against a stdlib checker. USAP internal.",
+  "description": "Keeps a project's docs as a one-question-one-authoritative-file system: init a routing table + decision register + append-only log, log each session's work into it, reorganize a messy existing project into it, or audit one against a stdlib checker. USAP internal.",
   "hooks": "./hooks/hooks.json"
 }

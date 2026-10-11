@@ -12,31 +12,6 @@
           }
         ]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "shell": "bash",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" post_tool_use \"${CLAUDE_PLUGIN_ROOT}\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "shell": "bash",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" stop \"${CLAUDE_PLUGIN_ROOT}\"",
-            "timeout": 30
-          }
-        ]
-      }
     ]
   }
 }

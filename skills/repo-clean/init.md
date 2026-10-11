@@ -73,9 +73,9 @@ particular repo):
   reconcile it silently.
 - A rule's text, a measured number, or a defect description lives in exactly one file. Every
   other doc points to it — never repeats the codes, numbers, or conditions themselves.
-- The repo-clean checker must exit 0; the Stop hook runs it whenever a doc changed. The log
-  is written by fold-in (`/repo-clean maintain`), which runs at session start and when you
-  say the session is over.
+- The repo-clean checker must exit 0; it runs at session start and at the end of
+  `/repo-clean maintain`, which writes the log when you ask ("log this") or say the session
+  is over.
 
 **Ask** about these — they're repo-specific, so no generic wording will fit as-is:
 - Where scripts run from / what path literals are relative to.
@@ -153,8 +153,8 @@ Why: <one line — why this repo needed it>
 # Known defects
 
 This file is authoritative for **what is broken**. Each defect: `### DEF-NN — title`, a
-`Status:` line (`confirmed`, `reported`, or `fixed`), what goes wrong, and when it gets
-fixed.
+`Status:` line (`confirmed` or `reported`), what goes wrong, and when it gets fixed. When it
+is fixed, delete the entry; the log entry for the fix names it.
 
 ## Open
 ```
@@ -201,7 +201,7 @@ a target directory later.
 ## 7. Existing stray docs
 
 Do not move or touch any pre-existing markdown/html outside what you just scaffolded. Say:
-"There are existing docs not yet covered — run `/repo-clean reorganize` to fold them in."
+"There are existing docs not yet covered — run `/repo-clean reorganize` to bring them in."
 
 ## 8. Run the checker
 

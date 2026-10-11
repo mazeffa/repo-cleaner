@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
-"""SessionStart hook: print the home's current State:/Next: (read by the checker's own log
-parser), the plugin version, any checker problems, and - on a fresh start only - the earlier
-sessions waiting to be folded in (D-021). Opened
-above several homes, print one line naming the ones with un-folded work. Never blocks
-(SessionStart can't block anyway)."""
+"""SessionStart hook: print the home's last log heading and its age, its State:/Next: (read
+by the checker's own log parser), the plugin version, and any checker problems. Opened above
+several homes, print one line naming them. Never blocks (SessionStart can't block anyway)."""
 import json
+import re
 import sys
-import time
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _lib import (
-    PLUGIN_ROOT, find_home, find_homes_nearby, load_session, local_time, read_stdin_json,
-    run_checker, save_session, setup_already_offered, unfolded_sessions,
+    PLUGIN_ROOT, find_home, find_homes_nearby, read_stdin_json, run_checker,
+    setup_already_offered,
 )
-
-FOLD = Path(__file__).resolve().parent / "fold.py"
-TRIGGERS = ('Fold-in also runs when the user asks ("/repo-clean maintain", "fold in") '
-            'or says the session is over.')
 
 
 def names(homes):
@@ -28,17 +23,11 @@ def names(homes):
 def main():
     data = read_stdin_json()
     cwd = Path(data.get("cwd") or ".").resolve()
-    startup = data.get("source", "startup") == "startup"
 
     home = find_home(cwd)
     if home is None:
         nearby = find_homes_nearby(cwd)
-        waiting = [h for h in nearby if unfolded_sessions(h)]
-        if waiting and startup:
-            print(f"repo-clean: {len(waiting)} home(s) below have un-folded sessions: "
-                  f"{names(waiting)}. Fold each in (/repo-clean maintain) unless the user "
-                  f"says not now. {TRIGGERS}")
-        elif nearby:
+        if nearby:
             print(f"repo-clean: homes below: {names(nearby)}.")
         elif not setup_already_offered(cwd):
             print("repo-clean is not set up here. Ask the user, then run /repo-clean init.")
@@ -46,6 +35,17 @@ def main():
 
     try:
         import check_docs
+        entries = check_docs.log_entries(check_docs.Ctx(home, dict(check_docs.CONFIG)))
+        if entries:
+            heading = entries[-1][1]
+            print(heading)
+            m = re.search(r"\d{4}-\d{2}-\d{2}", heading)
+            try:
+                if m:
+                    days = (date.today() - date.fromisoformat(m.group())).days
+                    print(f"Last entry: {m.group()} ({days} days ago)")
+            except ValueError:  # an impossible date: print no age, keep State/Next
+                pass
         fields = check_docs.current_fields(home)
         for key in ("State", "Next"):
             if fields.get(key):
@@ -59,22 +59,6 @@ def main():
     except Exception as exc:
         print(f"repo-clean: version unknown ({exc!r})")
 
-    if startup:
-        waiting = unfolded_sessions(home)
-        if waiting:
-            dates = sorted({s["last_stop"] for s in waiting})
-            print(f"repo-clean: {len(waiting)} earlier session(s) not yet folded into the docs "
-                  f"(last active {local_time(dates[0])[:10]} to {local_time(dates[-1])[:10]}). "
-                  f"Before other work, fold them in per /repo-clean maintain "
-                  f"(`python \"{FOLD}\" list \"{home}\"`), unless the user says not now - other windows "
-                  f"may still be open. {TRIGGERS}")
-
-    sid = data.get("session_id")
-    if sid:  # problems that predate the session are shown below, not used to block its turns
-        rec = load_session(home, sid)
-        if "checked_at" not in rec:
-            rec["checked_at"] = time.time()
-            save_session(home, sid, rec)
     sys.stdout.flush()  # the checker is the slow part; what's above survives a timeout
     code, text = run_checker(home)
     if code == 1:

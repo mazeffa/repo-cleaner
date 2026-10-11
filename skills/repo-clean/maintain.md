@@ -1,13 +1,11 @@
 # maintain
 
-Fold in: read what earlier sessions did, route each fact to the file that owns it, write
-one log entry, then run the checker. This is the one act that writes the docs (D-021).
+Write what this session did into the docs: route each fact to the file that owns it, write
+one log entry, then run the checker. This is the one act that writes the docs (D-025).
 
-It runs when the user asks (`/repo-clean maintain`, "fold in", "log this"), when the user
-says the session is over, or when the session-start hook says earlier sessions are waiting.
-In that last case, go ahead unless the user says not now — other windows may still be open,
-and the sessions will come up again next time. Opened above several homes, fold in each
-home the hook named, one at a time, passing that home's path below.
+It runs when the user asks (`/repo-clean maintain`, "log this") or says the session is over.
+Opened above several homes, run it once for each home the session changed, passing that
+home's path below.
 
 ## Mode
 
@@ -22,30 +20,16 @@ otherwise are fine; there's no need for a clean tree here. No `.git` at all: ski
 
 ## 1. Collect changed facts
 
-`fold.py` sits in the plugin's `hooks/` folder, two levels above this skill's folder; the
-session-start line prints its full path.
+Work from this conversation: what the user said and decided, what Claude did, which files
+were edited, and the user's answers to questions and plan prompts. Open a tool's output or a
+query result only when you need one specific fact that lives there, never in bulk — query
+results can hold patient data. If the conversation holds nothing beyond idle reading, write
+no entry and say so.
 
-1. `python <plugin>/hooks/fold.py list <home>` lists the sessions not yet folded in, and
-   remembers which it showed. When the user says the session is over, this session is in the
-   list too.
-2. `python <plugin>/hooks/fold.py read <home>` prints every listed session, oldest first: only
-   what the user said, what Claude said, which files were edited, and the user's answers to
-   questions and plan prompts — and only what is newer than that session's last fold-in and
-   no newer than `list`'s run (later work waits for the next fold-in). It pages: while it ends with a `-- more:` line, run the `--from N` command that line gives.
-   Work from what it prints. Open a tool's output or a query result only when you need one
-   specific fact that lives there, never in bulk — query results can hold patient data.
-3. `read` reports a session whose transcript is gone (they expire, 30 days by default) or
-   unreadable as `detail lost` and goes on. Name each such session in the log entry as "this
-   session happened; its details were lost" — never guess what it did. If `read` exits 1,
-   every session was lost: tell the user, and don't invent an entry.
-4. If the sessions hold nothing beyond an earlier fold-in or idle reading, write no entry;
-   go straight to step 7.
-
-`git diff` and `git log` may help confirm a fact, but the transcripts are the record — many
+`git diff` and `git log` may help confirm a fact, but the conversation is the record — many
 homes share a repo, and git doesn't say which session did what.
 
-`--check`: run `list --check` and `read` and report where each fact would go (step 2); write
-nothing, and don't run `done`.
+`--check`: report where each fact would go (step 2); write nothing.
 
 ## 2. Route each fact via the table, to exactly one owner
 
@@ -76,7 +60,7 @@ than interrupting per-item.
 
 ## 4. Append the log entry
 
-One entry per fold-in, however many sessions it covers. Add a
+One entry per `maintain` run. Add a
 `## YYYY-MM-DD [(N)] — headline` entry (see `example-layout.md` for the grammar) with
 `Decisions:` and `Docs:` fields, then `State:` (what's true now) and `Next:` (what to do
 next). Remove `State:` and `Next:` from the previous last entry — only the last entry carries
@@ -111,10 +95,3 @@ raise them with the user, in `--check` mode just list them:
 - A log's last `State:` line that looks stale against recent `git log` activity.
 - A research doc whose `Date:` is old relative to the code it describes.
 - An `open` decision whose `Revisit:` trigger has clearly already been met.
-
-## 7. Record the fold-in
-
-Run `python <plugin>/hooks/fold.py done <home>`. It marks exactly the sessions `list` showed
-— and refuses (exit 3) until `read` has printed every one to the end — so a session that stopped during
-the fold-in still comes up next time, and this session doesn't. A session that keeps working
-afterwards comes up again. Skip in `--check` mode.
