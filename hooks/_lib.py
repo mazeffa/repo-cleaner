@@ -97,5 +97,8 @@ def setup_already_offered(cwd):
     seen = norm in offered
     if not seen:
         offered[norm] = True
-        _write_json(OFFERED_FILE, offered)
+        try:
+            _write_json(OFFERED_FILE, offered)
+        except OSError:  # an unwritable state dir only means the offer may repeat
+            pass
     return seen

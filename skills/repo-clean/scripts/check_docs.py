@@ -8,7 +8,7 @@ at or above the cwd, or a bad --root) or on any unhandled exception. Prints one 
 finding either way. With no --root, the home is the nearest `.repo-clean` marker at or above
 the current folder.
 
-Rules (stable string ids, used in inline suppression comments and in output; D-024):
+Rules (stable string ids, used in inline suppression comments; D-024):
   decisions-integrity   Unique IDs in the decision register, closed-vocabulary Status
                          read from the entry body only, symmetric supersession
                          (every id in Supersedes:/Superseded-by: is checked, not just
@@ -27,8 +27,9 @@ Rules (stable string ids, used in inline suppression comments and in output; D-0
   banned-headers        No 'Next Steps'-style header anywhere - next steps live only in the
                          current log entry's Next: field (D-016(c)); narrowed from
                          TODO/Next Steps/Future Work by D-017.
-  log-grammar           Log heading grammar, required fields, only the log's last entry, across period files,
-                         carries State: and Next: - and it must carry both (D-016(c)).
+  log-grammar           At least one dated entry; log heading grammar, required fields; only the
+                         log's last entry, across period files, carries State: and Next: - and it
+                         must carry both (D-016(c)).
   open-questions-sync   Open-questions table <-> Status: open entries, Revisit: required.
   routing-coverage      Every living doc is referenced in the routing file's table
                          (table rows only, a leading './' normalized).
@@ -170,22 +171,25 @@ class Ctx:
         return any(d in p.parents or d == p for d in self.exempt_dirs)
 
 
-def routed_docs(ctx):
-    """Every existing .md a routing-table row names (D-020) - a file the table calls
-    authoritative is one the model will trust, so it is one the checker reads."""
-    routing = ctx.root / ROUTING_FILE
-    if not routing.is_file():
-        return []
+def routing_table_paths(ctx):
+    """Every backticked span in a routing-table row, a leading './' stripped - the one reader
+    of the table's format. The caller checks that ROUTING_FILE exists."""
     out = []
-    for line in read_doc(routing).splitlines():
+    for line in read_doc(ctx.root / ROUTING_FILE).splitlines():
         if line.strip().startswith("|"):
             for span in re.findall(r"`([^`]+)`", line):
                 rel = span.strip()
-                rel = rel[2:] if rel.startswith("./") else rel
-                p = ctx.root / rel
-                if rel.endswith(".md") and exists_exact(ctx.root, rel) and not ctx.is_exempt(p):
-                    out.append(p)
+                out.append(rel[2:] if rel.startswith("./") else rel)
     return out
+
+
+def routed_docs(ctx):
+    """Every existing .md a routing-table row names (D-020) - a file the table calls
+    authoritative is one the model will trust, so it is one the checker reads."""
+    if not (ctx.root / ROUTING_FILE).is_file():
+        return []
+    return [ctx.root / rel for rel in routing_table_paths(ctx)
+            if rel.endswith(".md") and exists_exact(ctx.root, rel) and not ctx.is_exempt(ctx.root / rel)]
 
 
 def living_docs(ctx):
@@ -364,7 +368,7 @@ def check_decisions_integrity(ctx, errors, docs):
     ctx.decision_ids = ids
 
 
-LOG_HEADING_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}.*$")
+LOG_HEADING_RE = re.compile(r"^## \d{4}-\d.*$", re.M)
 
 
 def check_log_fields_resolve(ctx, errors, docs):
@@ -435,7 +439,6 @@ def check_banned_headers(ctx, errors, docs):
 
 
 LOG_HEAD_START_RE = re.compile(r"^## (\d{4}-\d{2}-\d{2})(?: \((\d+)\))?")
-LOG_HEADING_LINE_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}.*$", re.M)
 LOG_HEADING_GRAMMAR_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}(?: \(\d+\))? [\u2014-] .+$")
 OLD_DATED_HEADING_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}")
 
@@ -457,9 +460,11 @@ def current_fields(root):
 
 
 def check_log_grammar(ctx, errors, docs):
-    log_dir = ctx.root / LOG_DIR
-    if not log_dir.exists():
+    all_entries = log_entries(ctx)
+    if not all_entries:
+        errors.append(f"{LOG_DIR}: no dated entry ('## YYYY-MM-DD \u2014 headline') found")
         return
+    log_dir = ctx.root / LOG_DIR
     for log in sorted(log_dir.glob("*.md")):
         text = read_doc(log)
         lines = text.splitlines()
@@ -477,11 +482,12 @@ def check_log_grammar(ctx, errors, docs):
                     )
 
         seen_keys = set()
-        for m in LOG_HEADING_LINE_RE.finditer(text):
+        for m in LOG_HEADING_RE.finditer(text):
             heading = m.group(0)
             lineno = text[:m.start()].count("\n") + 1
             if not LOG_HEADING_GRAMMAR_RE.match(heading):
                 errors.append(f"{log.name}:{lineno}: log heading grammar violated: {heading.strip()}")
+                continue
             hm = LOG_HEAD_START_RE.match(heading)
             key = (hm.group(1), hm.group(2) or "")
             if key in seen_keys:
@@ -497,20 +503,18 @@ def check_log_grammar(ctx, errors, docs):
             if "Docs" not in fields:
                 errors.append(f"{log.name}: entry '{head}' missing a Docs: line")
 
-    all_entries = log_entries(ctx)
-    if all_entries:
-        name, heading, body = all_entries[-1]
-        fields = parse_fields(body)
+    name, heading, body = all_entries[-1]
+    fields = parse_fields(body)
+    for field in ("State", "Next"):
+        if not fields.get(field, "").strip():
+            errors.append(f"{name}: last entry '{heading.strip()}' missing a non-empty {field}: line")
+    for name, heading, body in all_entries[:-1]:
         for field in ("State", "Next"):
-            if not fields.get(field, "").strip():
-                errors.append(f"{name}: last entry '{heading.strip()}' missing a non-empty {field}: line")
-        for name, heading, body in all_entries[:-1]:
-            for field in ("State", "Next"):
-                if parse_fields(body).get(field, "").strip():
-                    errors.append(
-                        f"{name}: entry '{heading.strip()}' carries a {field}: line but is not the "
-                        "log's last entry - only the last entry holds current state; delete it"
-                    )
+            if parse_fields(body).get(field, "").strip():
+                errors.append(
+                    f"{name}: entry '{heading.strip()}' carries a {field}: line but is not the "
+                    "log's last entry - only the last entry holds current state; delete it"
+                )
 
 
 def check_open_questions_sync(ctx, errors, docs):
@@ -548,15 +552,7 @@ def check_routing_coverage(ctx, errors, docs):
     if not routing_path.exists():
         errors.append(f"{ROUTING_FILE}: file does not exist")
         return
-    routing_text = read_doc(routing_path)
-    routed = set()
-    for line in routing_text.splitlines():
-        if line.strip().startswith("|"):
-            for span in re.findall(r"`([^`]+)`", line):
-                norm = span.strip()
-                if norm.startswith("./"):
-                    norm = norm[2:]
-                routed.add(norm)
+    routed = set(routing_table_paths(ctx))
     for ext in ("*.md", "*.html"):
         for p in sorted(ctx.docs.rglob(ext)):
             rel = p.relative_to(ctx.docs)
@@ -572,20 +568,20 @@ def check_routing_coverage(ctx, errors, docs):
 
 
 GENERIC_RULES = (
-    ("decisions-integrity", check_decisions_integrity),
-    ("log-fields-resolve", check_log_fields_resolve),
-    ("outside-repo-paths", check_outside_repo_paths),
-    ("paths-exist", check_paths_exist),
-    ("banned-headers", check_banned_headers),
-    ("log-grammar", check_log_grammar),
-    ("open-questions-sync", check_open_questions_sync),
-    ("routing-coverage", check_routing_coverage),
+    check_decisions_integrity,
+    check_log_fields_resolve,
+    check_outside_repo_paths,
+    check_paths_exist,
+    check_banned_headers,
+    check_log_grammar,
+    check_open_questions_sync,
+    check_routing_coverage,
 )
 
 
 def run_generic_rules(ctx, errors):
     docs = living_docs(ctx)
-    for _rule_id, fn in GENERIC_RULES:
+    for fn in GENERIC_RULES:
         fn(ctx, errors, docs)
     for p in docs_plus_log(ctx):
         opener = scan_doc(p)[1]

@@ -25,7 +25,7 @@ Status: active   Date: 2026-09-18
 Decision: Track decisions here, route questions through CLAUDE.md, log work in
 docs/log/2026.md, and run the repo-clean checker from this repo's own
 `skills/repo-clean/scripts/check_docs.py` working-tree copy (D-015). How the checker is
-enforced is D-021's; commits are not gated.
+enforced is D-025's; commits are not gated.
 Why: The plugin did not use its own system, so every design decision lived only in chat
 and nothing tested whether the system is pleasant to live with.
 

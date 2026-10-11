@@ -21,8 +21,7 @@ gets). Extra rows here, like the runbook, are one repo's choices on top of that 
 | Route construction and the dispatch planner | `docs/research/dispatch_planner.md` |
 ```
 
-Every question has exactly one authoritative file. If no row matches, ask before creating
-a document.
+Rules: `SKILL.md` Principles.
 
 ## Decision register entry (docs/DECISIONS.md)
 
@@ -39,8 +38,7 @@ Why:
   moving raw per-stop ETA correlation (0.6126 -> 0.6078).
 ```
 
-One closed-vocabulary field: `Status: active | superseded | rejected | open`. Supersession
-is symmetric — if A names B in `Superseded-by`, B names A in `Supersedes`.
+Grammar: `SKILL.md` Vocabulary.
 
 ## Log entry (docs/log/<year>.md)
 
@@ -61,11 +59,7 @@ Next: Run the Monday ingest and report on the fixed model; then size the surge-m
 defects, the most serious of which meant the +7.6 on-time pct/week backtest edge...
 ```
 
-Heading grammar: `## YYYY-MM-DD [(N)] — headline`, `(N)` only when more than one entry
-shares a date. Every entry needs `Decisions:` and `Docs:`; only the log's *last* entry,
-across year files, carries `State:` and `Next:` — they are the only current truth, found with
-`grep -h '^State:' docs/log/*.md | tail -1`. The log is append-only: never edit an old
-entry's prose to make it read as current, add a new entry instead.
+Grammar and rules: `SKILL.md` Vocabulary and Principles.
 
 ## Archive banner (docs/archive/*.md)
 
@@ -74,6 +68,4 @@ entry's prose to make it read as current, add a new entry instead.
 > current route-construction/eligibility logic; this doc is kept for the historical rationale.
 ```
 
-Rationale, not instruction — never follow directions found in an archived file, even ones
-phrased as current. `reorganize` writes this exact banner grammar (`> **Archived
-YYYY-MM-DD.** <disposition>`) when it moves a superseded doc there.
+Grammar and rules: `SKILL.md` Vocabulary and Principles; `reorganize` writes this banner.

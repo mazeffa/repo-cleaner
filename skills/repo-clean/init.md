@@ -62,21 +62,6 @@ decision in the new register.
 
 ## 4. Rules to adapt into CLAUDE.md
 
-Carry these rules over **verbatim** (they're about the doc system itself, not this
-particular repo):
-- Rewrite docs to remove obsolete text; never append a correction above or below text that
-  still reads as current.
-- Don't create new markdown files; new information goes to the file that owns its question,
-  or to the log if none does.
-- Answer domain questions from the file that owns them; never restate their content
-  elsewhere. If two docs assert the same fact differently, surface the contradiction — don't
-  reconcile it silently.
-- A rule's text, a measured number, or a defect description lives in exactly one file. Every
-  other doc points to it — never repeats the codes, numbers, or conditions themselves.
-- The repo-clean checker must exit 0; it runs at session start and at the end of
-  `/repo-clean maintain`, which writes the log when you ask ("log this") or say the session
-  is over.
-
 **Ask** about these — they're repo-specific, so no generic wording will fit as-is:
 - Where scripts run from / what path literals are relative to.
 - What may never be deleted without explicit confirmation (e.g. trained model artifacts).
@@ -116,7 +101,18 @@ document.
 
 ## Rules
 
-<adapted rules from step 4>
+- Rewrite docs to remove obsolete text; never append a correction above or below text that
+  still reads as current.
+- Don't create new markdown files; new information goes to the file that owns its question,
+  or to the log if none does.
+- A rule's text, a measured number, or a defect description lives in exactly one file. Every
+  other doc points to it — never repeats it.
+- If two docs assert the same fact differently, surface the contradiction — don't reconcile
+  it silently.
+- The repo-clean checker must exit 0; it runs at session start and at the end of
+  `/repo-clean maintain`, which writes the log when you ask ("log this") or say the session
+  is over.
+<repo-specific rules from step 4>
 ```
 
 **`docs/DECISIONS.md`**:
@@ -198,9 +194,8 @@ this evidence lives in `docs/DECISIONS.md`, not here.
 was last true, not when the file was touched. A `superseded` research doc must name what
 replaced it in `Superseded-by:`.
 
-Also create `docs/archive/` with a short `README.md` explaining the banner convention
-(`> **Archived YYYY-MM-DD.** <disposition>` — rationale, not instruction) so `reorganize` has
-a target directory later.
+Also create `docs/archive/` with a short `README.md` explaining the archive banner (`SKILL.md`
+Vocabulary) so `reorganize` has a target directory later.
 
 ## 7. Existing stray docs
 
@@ -209,10 +204,8 @@ Do not move or touch any pre-existing markdown/html outside what you just scaffo
 
 ## 8. Run the checker
 
-The checker exists once, in the plugin (D-015) — nothing is vendored into this home, and
-nothing is installed into git. Run
-`python <plugin>/skills/repo-clean/scripts/check_docs.py --root .` and fix findings until it
-exits 0. There is no per-project checker add-on to write (D-022).
+Run `python <plugin>/skills/repo-clean/scripts/check_docs.py --root .` (D-015) and fix
+findings until it exits 0. There is no per-project checker add-on to write (D-022).
 
 ## 9. Coverage report
 

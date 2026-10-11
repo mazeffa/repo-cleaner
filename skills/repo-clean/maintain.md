@@ -42,8 +42,7 @@ For each change, ask "what kind of fact is this?":
   period file.
 - **Evidence** (new measurement, new research) → the subject's research doc, rewritten in
   place, with its `Status:`/`Date:` header updated.
-- **Correction to something already documented** → rewrite in place. Never append a
-  correction above or below text that still reads as current.
+- **Correction to something already documented** → rewrite in place (`SKILL.md` Principles).
 
 Every fact goes to exactly one file. If two docs already assert the same fact differently,
 report the contradiction — do not silently pick one and reconcile it.
@@ -61,11 +60,11 @@ than interrupting per-item.
 ## 4. Append the log entry
 
 One entry per `maintain` run. Add a
-`## YYYY-MM-DD [(N)] — headline` entry (see `example-layout.md` for the grammar) with
+`## YYYY-MM-DD [(N)] — headline` entry (grammar: `SKILL.md` Vocabulary) with
 `Decisions:` and `Docs:` fields, then `State:` (what's true now) and `Next:` (what to do
 next). Remove `State:` and `Next:` from the previous last entry — only the last entry carries
-them. An entry is what someone needs to resume, typically 5 to 15 lines. When the detail is
-longer, `State:` may point to the file that holds it.
+them. When the detail is longer than an entry should hold (`SKILL.md` Principles), `State:`
+may point to the file that holds it.
 
 Write to `docs/log/<current year>.md`. If that file doesn't exist yet, create it with the
 same format note at the top as last year's, and remove `State:` and `Next:` from the last
@@ -78,9 +77,8 @@ of applied to a file.
 
 ## 5. Run the checker
 
-The checker exists once, in the plugin (D-015) — no copy is vendored into the home. Run
-`python <plugin>/skills/repo-clean/scripts/check_docs.py --root <home>`; the plugin's own
-source repo uses its working-tree copy: `python skills/repo-clean/scripts/check_docs.py`.
+Run `python <plugin>/skills/repo-clean/scripts/check_docs.py --root <home>` (D-015); the
+plugin's own source repo uses its working-tree copy: `python skills/repo-clean/scripts/check_docs.py`.
 
 In write mode, fix findings until it exits 0. In `--check` mode, report them and stop.
 

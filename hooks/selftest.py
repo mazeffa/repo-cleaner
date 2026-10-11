@@ -218,6 +218,13 @@ def test_session_start(base):
     check("session_start: setup offer fires once", "init" in out1, out1)
     check("session_start: setup offer silent second time", out2.strip() == "", out2)
 
+    blocked = base / "state is a file"
+    blocked.write_text("x", encoding="utf-8")
+    rc, out, err = run_hook("session_start.py", {"session_id": "b3", "cwd": str(unset_repo)},
+                            blocked / "sub")
+    check("session_start: an unwritable state dir still offers setup and exits 0",
+          rc == 0 and "init" in out and not err, (rc, out, err))
+
 
 def test_find_home(base):
     """D-023: the marker and the walk-up; the no-home glob; no pre-marker layout."""
@@ -551,6 +558,23 @@ def test_checker_rules(base):
         check("rules: DEF-19 an unknown flag exits", False, "no SystemExit")
     except SystemExit as e:
         check("rules: DEF-19 an unknown flag exits 2", e.code == 2, e.code)
+
+    # F1 (debate 4): a log with no recognisable dated entry is a finding, not a silent pass.
+    z = make_home(base, "zero entry home")
+    zlog = z / "docs" / "log" / "2026.md"
+    for label, text, want in (
+        ("a malformed dated heading is a grammar finding, not a crash",
+         "## 2026-1-1 - typo date\n", "log heading grammar violated: ## 2026-1-1"),
+        ("a log with no dated heading is a finding", "# 2026 log\n\nno entries yet\n", "no dated entry"),
+        ("a home with no docs/log is a finding", None, "no dated entry"),
+    ):
+        if text is None:
+            shutil.rmtree(z / "docs" / "log")
+        else:
+            zlog.write_text(text, encoding="utf-8")
+        fz = []
+        check_docs.run_generic_rules(check_docs.Ctx(z), fz)
+        check(f"rules: {label}", any(want in e for e in fz), fz)
 
 
 def main():

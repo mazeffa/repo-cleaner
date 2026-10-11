@@ -8,8 +8,8 @@ hook prints the log's current state and any checker finding at session start;
 
 This is the USAP data team's internal fork, developed on GitHub and deployed from Azure
 DevOps. It is not published and has no external users; the rule set answers to this team's
-work rather than the general case. See `docs/DECISIONS.md` D-011 for why, and D-015
-through D-025 for the current design.
+work rather than the general case. See `docs/DECISIONS.md` D-011 for why, and its
+`Status: active` entries for the current design.
 
 ## Install
 

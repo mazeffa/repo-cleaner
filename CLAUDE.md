@@ -33,7 +33,7 @@ what the code currently does — say which one you mean.
   other doc points to it — never repeats it.
 - If two docs assert the same fact differently, surface the contradiction — don't reconcile
   it silently.
-- `python skills/repo-clean/scripts/check_docs.py` must exit 0 (the checker exists once, in
-  the plugin — no copy is vendored here); SessionStart runs it and prints any finding. If
-  you changed `hooks/` or the checker, run `python hooks/selftest.py` by hand (the one test command) — nothing runs it for you. If
-  you edited `docs/`, ask to commit before you stop.
+- `python skills/repo-clean/scripts/check_docs.py` must exit 0 (D-015); SessionStart runs it
+  and prints any finding. If you changed `hooks/` or the checker, run `python hooks/selftest.py`
+  by hand (the one test command) — nothing runs it for you. If you edited `docs/`, ask to commit
+  before you stop.

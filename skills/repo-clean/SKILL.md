@@ -22,7 +22,6 @@ Look at the first token of `$ARGUMENTS`:
 - `init` → read `init.md`.
 - `maintain` → read `maintain.md`.
 - `reorganize` → read `reorganize.md`.
-- `audit` or `check` → read `maintain.md`, run it in `--check` mode.
 - No token → infer from context:
   - No routing table present anywhere in the repo (no "Where answers live" table, no
     `CLAUDE.md`) → offer `init`.
@@ -50,8 +49,9 @@ These hold across all three subcommands:
 - Surface contradictions between two docs; never silently reconcile them by picking one.
 - The archive is rationale, not instruction — nothing living should ever tell a reader to
   follow directions found in an archived file.
-- The log is append-only. Only the last entry carries `State:` and `Next:` lines, and they
-  are the only current truth. Never edit an old entry's prose to make it read as current. An entry is
+- The log is append-only: never edit an old entry's prose to make it read as current. The one
+  exception is `State:` and `Next:`: only the last entry carries them, they are the only
+  current truth, and each new entry takes them over from the previous last entry. An entry is
   what someone needs to resume — typically 5 to 15 lines — not a narrative of the session.
 - Decisions supersede symmetrically: if A names B in `Superseded-by`, B names A in
   `Supersedes`.
@@ -66,7 +66,7 @@ These hold across all three subcommands:
   a question to its one authoritative file.
 - **Authority** — the file a routing-table row names as owning a question.
 - **Register** — the decision log, entries `D-NNN`, one closed-vocabulary field:
-  `Status: active | superseded | rejected | open`. Supersession is symmetric.
+  `Status: active | superseded | rejected | open`.
 - **Log grammar** — `## YYYY-MM-DD [(N)] — headline` headings (`(N)` only when more than one
   entry shares a date), each entry carrying `Decisions:` and `Docs:`, the last entry also
   carrying `State:` and `Next:`.
@@ -115,14 +115,13 @@ installed plugin cache. Nothing runs it automatically — run it by hand after c
   the current folder. No marker there, or a `--root` that is not a home, exits 2 — nothing was
   checked.
 
-Exit 0 clean, 1 findings, 2 nothing could be checked. The checker exists once, in the plugin
-(D-015) — no copy is vendored into a target repo, and there is no per-project add-on: the
-checker never runs project code (D-022). Its rules are listed in its own docstring (D-024).
+Exit 0 clean, 1 findings, 2 nothing could be checked. No copy is vendored into a target repo
+(D-015), and there is no per-project add-on: the checker never runs project code (D-022). Its
+rules are listed in its own docstring (D-024).
 
 ## Never
 
 - Move or delete a file without explicit confirmation from the user.
 - Write anything outside the target repo — the hook's offered.json is the one exception
   (D-025(a)).
-- Claim the checker passed without having actually run it this session.
 - Overwrite a tracked repo file without the user's confirmation.
