@@ -3,7 +3,7 @@
 A Claude Code plugin that keeps a project's docs from rotting: one question, one
 authoritative file, tracked in a CLAUDE.md routing table, a `D-NNN` decision
 register, an append-only work log, and a stdlib checker. One session
-hook prints the log's current state and any checker finding at session start;
+hook prints the last log entry, what's open, and any checker finding at session start;
 `/repo-clean maintain` writes a session's work into the docs when asked. Nothing touches git.
 
 This is the USAP data team's internal fork, developed on GitHub and deployed from Azure
@@ -64,9 +64,9 @@ well-formed — it does not mean they are right. Specifically, it cannot tell:
   restated code constants both pass;
 - whether a doc's claims are still true, beyond what a stale `Date:` hints at;
 - whether a script or data path named in a doc still exists: `paths-exist` checks only
-  `.md` paths (D-016(b)), so a decision naming a deleted `.py` or `.R` file passes;
+  `.md` paths (D-027(5)), so a decision naming a deleted `.py` or `.R` file passes;
 - whether an archive banner cites a real path or a research doc carries `Status:`/`Date:` —
-  both conventions stay, but nothing enforces them (D-024).
+  both conventions stay, but nothing enforces them (D-027(7)).
 
 Those need reading, which is what `maintain --check` step 6 is for. Treat a
 green run as "nothing is malformed", not "the docs are correct" — a checker
@@ -77,7 +77,7 @@ that looks more authoritative than it is does more harm than no checker.
 Only the doc files themselves and an empty `.repo-clean` marker. The checker exists once, in
 the plugin (D-015) — no copy is vendored into your repo — and the hook runs the one shipped
 with the same plugin version as themselves. Nothing is installed into git: no commit hook,
-no `core.hooksPath`, no `.gitignore` (D-025). A project set up by an older release may still
+no `core.hooksPath`, no `.gitignore` (D-027(1)). A project set up by an older release may still
 have `scripts/hooks/pre-commit`; it is no longer used, and you can delete it and run
 `git config --unset core.hooksPath`.
 

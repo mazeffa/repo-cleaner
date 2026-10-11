@@ -8,9 +8,9 @@ This repo uses its own system.
 | Question | Authority |
 |---|---|
 | What this is, how to install and run it, what the checker can't catch | `README.md` |
-| What we believe and why (D-NNN) | `docs/DECISIONS.md` |
+| What we believe and why (D-NNN), and what's waiting (`Status: open`) | `docs/DECISIONS.md` |
 | What is broken and its status | `docs/DEFECTS.md` |
-| What happened, and current state | `docs/log/2026.md` — current state is the log's last entry's `State:` line, across period files: `grep -h '^State:' docs/log/*.md \| tail -1` |
+| What happened, and where work left off | `docs/log/2026.md` — the last entry |
 | Routing logic, principles, vocabulary | `skills/repo-clean/SKILL.md` |
 | What each subcommand does | `skills/repo-clean/init.md`, `skills/repo-clean/maintain.md`, `skills/repo-clean/reorganize.md` |
 | An illustrative worked layout | `skills/repo-clean/example-layout.md` |

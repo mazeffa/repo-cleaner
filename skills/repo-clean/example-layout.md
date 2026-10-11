@@ -16,7 +16,7 @@ gets). Extra rows here, like the runbook, are one repo's choices on top of that 
 | What this is, setup, how to run, known defects | `README.md` |
 | Weekly ops procedure | `docs/RUNBOOK.md` |
 | What we believe and why (D-NNN) | `docs/DECISIONS.md` |
-| What happened, current state and next steps | `docs/log/<year>.md` — the last entry's `State:` and `Next:`: `grep -h '^State:' docs/log/*.md \| tail -1` |
+| What happened, and where work left off | `docs/log/<year>.md` — the last entry |
 | Model, features, accuracy | `docs/research/prediction_model.md` |
 | Route construction and the dispatch planner | `docs/research/dispatch_planner.md` |
 ```
@@ -48,12 +48,10 @@ Grammar: `SKILL.md` Vocabulary.
 Decisions: D-041 (new: six defects fixed, backtest rerun)
 Docs: docs/DECISIONS.md, docs/research/backtest.md, docs/research/prediction_model.md,
 docs/research/dispatch_planner.md
-State: Region 1 fully migrated and cut over (2026-09-13, this period's first entry); model/planner Phase 1 defects
-fixed and validated, backtest at +10.57 on-time pct/wk (paired vs pre-fix +3.75 ns / +3.02
-mean10, 2.3 SE); Monday ingest/report not yet run; open before Region 2: surge-mode capacity
-caps (D-035 follow-up 2), D-037's route_runs.parquet design (adopted, not yet coded), D-040's
-training-window lead, Phase 2/3 of the model/planner review.
-Next: Run the Monday ingest and report on the fixed model; then size the surge-mode caps.
+
+Left off: Phase 1 defects fixed and validated, backtest at +10.57 on-time pct/wk (paired vs
+pre-fix +3.75 ns / +3.02 mean10, 2.3 SE); the Monday ingest and report on the fixed model
+come next.
 
 **The question.** A full review of the prediction model and dispatch planner found six live
 defects, the most serious of which meant the +7.6 on-time pct/week backtest edge...

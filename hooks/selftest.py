@@ -61,7 +61,7 @@ def make_home(parent, name, broken=False):
         "## Open questions\n\n## Fields\n\n## D-001 — a\nStatus: active\n",
         encoding="utf-8")
     (h / "docs" / "log" / "2026.md").write_text(
-        "## 2026-01-01 — start\n\nDecisions: D-001\nDocs: CLAUDE.md\nState: ok → next\nNext: more\n",
+        "## 2026-01-01 — start\n\nDecisions: D-001\nDocs: CLAUDE.md\nLeft off: ok → next\n",
         encoding="utf-8")
     return h
 
@@ -171,12 +171,11 @@ def test_failing_checker(base):
 def test_session_start(base):
     repo = make_scratch_repo(base)
     state = base / "state_ss"
-    expect = check_docs.current_fields(repo)
+    body = "\n".join(check_docs.log_entries(check_docs.Ctx(repo))[-1][2]).strip()
 
     rc, out, err = run_hook("session_start.py", {"session_id": "a1", "cwd": str(repo),
                                                  "source": "startup"}, state)
-    check("session_start: prints State: and Next:",
-          f"State: {expect['State']}" in out and f"Next: {expect['Next']}" in out, out)
+    check("session_start: prints the last entry's body", body and body in out, out)
     check("session_start: prints the plugin version",
           re.search(r"^repo-clean \d+\.\d+\.\d+$", out, re.M), out)
 
@@ -188,27 +187,41 @@ def test_session_start(base):
     out = ss("new4", "resume")
     check("session_start: prints a checker finding", "checker found problems" in out, out)
 
-    arrow = make_home(base, "arrow home")  # a → in State: must not crash on a cp1252 console
+    arrow = make_home(base, "arrow home")  # a → in the log must not crash on a cp1252 console
     rc, out, err = run_hook("session_start.py", {"session_id": "ar1", "cwd": str(arrow),
                                                  "source": "startup"}, base / "state_arrow")
-    check("session_start: an arrow in the log exits 0 and prints the State line",
+    check("session_start: an arrow in the log exits 0 and prints the body line",
           rc == 0 and "ok → next" in out, (rc, out, err))
 
     tricky = make_home(base, "tricky home")
     (tricky / "docs" / "log" / "2026.md").write_text(
         "## 2026-01-01 — start\n\nDecisions: none\nDocs: none\n"
-        "```\nState: fenced\n```\nState: a  Next: b\n", encoding="utf-8")
+        "```\nfenced\n```\nleft off here\n", encoding="utf-8")
     rc, out, err = run_hook("session_start.py", {"session_id": "tr1", "cwd": str(tricky),
                                                  "source": "startup"}, base / "state_tricky")
     lines = out.splitlines()
-    check("session_start: reads the log the checker's way (fence blanked, inline Next:)",
+    check("session_start: reads the log the checker's way (fence blanked), body then version",
           lines[0] == "## 2026-01-01 \u2014 start" and lines[1].startswith("Last entry: 2026-01-01 (")
-          and lines[2:4] == ["State: a", "Next: b"] and "fenced" not in out
-          and re.fullmatch(r"repo-clean \d+\.\d+\.\d+", lines[4]), out)
+          and lines[2:4] == ["Decisions: none", "Docs: none"] and "left off here" in out
+          and "fenced" not in out and re.fullmatch(r"repo-clean \d+\.\d+\.\d+", lines[-1]), out)
+    check("session_start: no git output (D-027(a))", "git" not in out.lower(), out)
     check("session_start: prints the last entry's heading, so an old State shows its date",
           lines[0] == "## 2026-01-01 \u2014 start", out)
     check("session_start: prints the entry's age in days",
           "2026-01-01" in out and "days ago" in out, out)
+
+    waiting = make_home(base, "waiting home")
+    (waiting / "docs" / "DECISIONS.md").write_text(
+        "## Open questions\n\n| ID | Question | Revisit |\n|---|---|---|\n| D-002 | wait | later |\n\n"
+        "## Fields\n\n## D-001 — a\nStatus: active\n\n## D-002 — wait\nStatus: open\nRevisit: later\n",
+        encoding="utf-8")
+    (waiting / "docs" / "DEFECTS.md").write_text("# Known defects\n\n## Open\n\n### DEF-01 — broken\n",
+                                                 encoding="utf-8")
+    _, out, _ = run_hook("session_start.py", {"session_id": "w1", "cwd": str(waiting),
+                                              "source": "startup"}, base / "state_waiting")
+    check("session_start: prints an Open: line per open decision and defect",
+          "Open: D-002 — wait" in out and "Open: DEF-01 — broken" in out
+          and "Open: D-001" not in out, out)
 
     unset_repo = base / "réviser projet sans config"
     unset_repo.mkdir()
@@ -366,9 +379,7 @@ def test_checker_rules(base):
         "## D-011 \u2014 folded in, symmetric\n"
         "Status: superseded   Superseded-by: D-010\n\n"
         "## D-012 \u2014 folded in, NOT symmetric (missing Superseded-by)\n"
-        "Status: superseded\n\n"
-        # D-016(c): the register is not exempt from the banned header.
-        "## Next Steps in the register\n",
+        "Status: superseded\n",
         encoding="utf-8",
     )
     (tmp / "CLAUDE.md").write_text(
@@ -378,9 +389,6 @@ def test_checker_rules(base):
         "| checker | `scripts/tools/check_docs.py --root .` |\n\n"
         "See `docs/DOES_NOT_EXIST.md` and `C:\\Users\\x\\.claude\\plans\\p.md`.\n"
         "and a unix one `/home/me/notes.md`, and a Git Bash one `/c/Users/me/notes.md`.\n"
-        "## Next Steps later\n"
-        # D-017: TODO/Future Work headers are no longer banned, only Next Steps.
-        "## TODO no longer banned\n"
         "`docs/SUPPRESSED_MISSING.md` should not fire. <!-- check-docs: ignore paths-exist -->\n"
         # DEF-22 fire cases: wrong case, and a non-directory with a trailing slash.
         "Wrong case: `docs/Archive/BANNER.md`. Not a dir: `docs/archive/BANNER.md/`.\n"
@@ -391,7 +399,7 @@ def test_checker_rules(base):
         "By the way, `docs/ORPHAN.md` is mentioned here in prose, not the table.\n",
         encoding="utf-8",
     )
-    (tmp / "README.md").write_text("fine. Shared drive D:\\data\\lake\\x.csv is fine (D-016(a)).\n", encoding="utf-8")
+    (tmp / "README.md").write_text("fine. Shared drive D:\\data\\lake\\x.csv is fine (D-027(4)).\n", encoding="utf-8")
     (tmp / "docs" / "ROUTED.md").write_text("routed via the table with a leading ./\n", encoding="utf-8")
     (tmp / "docs" / "MOJIBAKE.md").write_bytes(b"# t\n\xff\xfe not utf-8\n")
     (tmp / "docs" / "ORPHAN.md").write_text("unrouted doc\n", encoding="utf-8")
@@ -401,7 +409,6 @@ def test_checker_rules(base):
         "```markdown\n"
         "## D-999 \u2014 a fake decision heading inside a fence\n"
         "Status: nonsense\n"
-        "## Next Steps inside a fence\n"
         "```\n",
         encoding="utf-8",
     )
@@ -410,8 +417,7 @@ def test_checker_rules(base):
         "Real content.\n"
         "```markdown\n"
         "## D-998 \u2014 a fake heading in a fence nobody closed\n"
-        "Status: nonsense\n"
-        "## Next Steps inside it\n",
+        "Status: nonsense\n",
         encoding="utf-8",
     )
     (tmp / "docs" / "log" / "2099-01.md").write_text(
@@ -427,15 +433,13 @@ def test_checker_rules(base):
         "## 2098-01-01 \u2014 first entry\n"
         "Decisions: none\n"
         "Docs: none\n\n"
-        "body text with an outside path C:\\Users\\x\\plan.md and a banned header below\n\n"
-        "## Next Steps later\n\n"
+        "body text with an outside path C:\\Users\\x\\plan.md\n\n"
         "### 2098-02-02 old-style heading after the first '##' heading\n\n"
         "## 2098-01-01 \u2014 duplicate date and no N\n"
-        "Docs: none\n"
-        "State: stale\n\n"
+        "Docs: none\n\n"
         "## 2098-01-03 bad grammar no dash\n"
         "Decisions: none\n\n"
-        "## 2098-01-04 (1) \u2014 last entry missing state\n"
+        "## 2098-01-04 (1) \u2014 last entry\n"
         "Decisions: none\n"
         "Docs: none\n",
         encoding="utf-8",
@@ -461,18 +465,12 @@ def test_checker_rules(base):
         "a ### decision heading is flagged": has("D-783", "decision heading must be '## D-NNN'"),
         "an unclosed fence is one finding, and nothing inside it fires":
             len([e for e in found if "unclosed code fence" in e]) == 1
-            and has("UNCLOSED.md:3", "unclosed code fence") and none_has("D-998")
-            and none_has("UNCLOSED.md", "banned"),
+            and has("UNCLOSED.md:3", "unclosed code fence") and none_has("D-998"),
         "Docs: field finding": has("Docs:"),
         "outside-repo path": has("absolute/outside-repo path in a living doc"),
         "missing path fires, suppressed one does not": has("does not exist") and none_has("SUPPRESSED_MISSING"),
-        "banned header": has("banned section"),
-        "TODO is no longer banned (D-017)": none_has("banned section", "TODO"),
-        "Next Steps in DECISIONS.md is banned (D-016(c))": has("DECISIONS.md", "banned section header"),
         "missing Decisions:": has("missing a Decisions:"),
         "missing Docs:": has("missing a Docs:"),
-        "last entry missing State:": has("missing a non-empty State:"),
-        "State: on a non-last entry": has("carries a State: line but is not"),
         "log grammar": has("log heading grammar violated"),
         "duplicate log heading": has("duplicate log heading"),
         "### heading after ##": has("'###' dated heading appears after"),
@@ -481,8 +479,8 @@ def test_checker_rules(base):
         "unrouted doc": has("not referenced in"),
         "Decisions: references an unknown id": has("Decisions: references unknown"),
         "abs path in CLAUDE.md (unix, Git Bash, drive)": has("CLAUDE.md:", "absolute/outside-repo path"),
-        "D-016(a): a non-home drive path is quiet": none_has("README.md:", "absolute/outside-repo path"),
-        "D-016(a): a C:\\Users\\ path still fires": has("2098-08.md:", "absolute/outside-repo path"),
+        "D-027(4): a non-home drive path is quiet": none_has("README.md:", "absolute/outside-repo path"),
+        "D-027(4): a C:\\Users\\ path still fires": has("2098-08.md:", "absolute/outside-repo path"),
         "a one-line multi-field entry parses (D-003)": none_has("D-003", "bad/missing"),
         "DEF-02: a backticked command with a flag is not a missing path": none_has("check_docs.py"),
         "DEF-05: a wrapped Docs: value is read to its last line": has("more-missing.md"),
@@ -505,40 +503,39 @@ def test_checker_rules(base):
     }.items():
         check(f"rules: {label}", ok, found if not ok else "")
 
-    # DEF-27: State:/Next: only on the log's last entry, across period files.
-    h = base / "rollover fixture"
+    # D-027(6): an upgraded home's old State:/Next: lines and "Next Steps" headings are history,
+    # not findings - on any entry, in any period file.
+    h = base / "upgrade fixture"
     (h / "docs" / "log").mkdir(parents=True)
     (h / "docs" / "DECISIONS.md").write_text(
         "## Open questions\n\n## Fields\n\n## D-001 \u2014 a\nStatus: active\n",
         encoding="utf-8")
-    (h / "CLAUDE.md").write_text("nothing to route\n", encoding="utf-8")
-    (h / "README.md").write_text("fine\n", encoding="utf-8")
+    (h / "CLAUDE.md").write_text("| Q | A |\n|---|---|\n| d | `docs/DECISIONS.md` |\n", encoding="utf-8")
+    (h / "README.md").write_text("fine\n\n## Next Steps\n", encoding="utf-8")
     (h / "docs" / "log" / "2097-01.md").write_text(
-        "## 2097-01-01 \u2014 first period, no state\nDecisions: none\nDocs: none\n", encoding="utf-8")
+        "## 2097-01-01 \u2014 first period\nDecisions: none\nDocs: none\nState: old\nNext: old\n",
+        encoding="utf-8")
     (h / "docs" / "log" / "2097-02.md").write_text(
-        "## 2097-02-01 \u2014 second period, first entry\nDecisions: none\nDocs: none\n\n"
-        "## 2097-02-02 \u2014 second period, last entry\nDecisions: none\nDocs: none\nState: current\n",
+        "## 2097-02-01 \u2014 second period, first entry\nDecisions: none\nDocs: none\nState: x\n\n"
+        "## Next Steps\n\n"
+        "## 2097-02-02 \u2014 second period, last entry\nDecisions: none\nDocs: none\n",
         encoding="utf-8")
     ctx = check_docs.Ctx(h)
     f1 = []
     check_docs.run_generic_rules(ctx, f1)
-    check("rules: DEF-27 State: on the last entry only is fine",
-          not any("State:" in e for e in f1), f1)
-    check("rules: D-016(c) the last entry must carry Next: too",
-          any("missing a non-empty Next:" in e for e in f1), f1)
-    with (h / "docs" / "log" / "2097-02.md").open("a", encoding="utf-8") as f:
-        f.write("Next: keep going\n")
-    with (h / "docs" / "log" / "2097-01.md").open("a", encoding="utf-8") as f:
-        f.write("State: old\nNext: old\n")
-    f2 = []
-    check_docs.run_generic_rules(ctx, f2)
-    check("rules: DEF-27 a State:/Next: on an earlier period file is one finding each",
-          not any("missing a non-empty" in e for e in f2)
-          and all(len([e for e in f2 if f"carries a {k}:" in e and "2097-01.md" in e]) == 1
-                  for k in ("State", "Next")), f2)
-    cf = check_docs.current_fields(h)
-    check("rules: current_fields is the last entry's fields", cf.get("State") == "current"
-          and cf.get("Next") == "keep going", cf)
+    check("rules: D-027(6) old State:/Next: lines and a Next Steps heading are no finding", f1 == [], f1)
+
+    o = base / "open items fixture"
+    (o / "docs").mkdir(parents=True)
+    check("rules: open_items with no register and no DEFECTS.md is empty", check_docs.open_items(o) == [])
+    (o / "docs" / "DEFECTS.md").write_text("## Open\n\n### DEF-01 \u2014 broken\n", encoding="utf-8")
+    check("rules: open_items reads DEFECTS.md with no register",
+          check_docs.open_items(o) == ["DEF-01 \u2014 broken"], check_docs.open_items(o))
+    (o / "docs" / "DECISIONS.md").write_text(
+        "## D-001 \u2014 a\nStatus: active\n\n## D-002 \u2014 wait\nStatus: open\n", encoding="utf-8")
+    (o / "docs" / "DEFECTS.md").unlink()
+    check("rules: open_items reads open decisions with no DEFECTS.md",
+          check_docs.open_items(o) == ["D-002 \u2014 wait"], check_docs.open_items(o))
 
     # D-020: a .md the routing table names outside docs/ is read like any living doc.
     (h / "sub").mkdir()

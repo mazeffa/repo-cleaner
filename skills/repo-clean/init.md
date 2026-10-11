@@ -5,7 +5,7 @@ necessarily the repo root.
 
 Never commit, stash, stage, or change git settings (including `.gitignore` and
 `core.hooksPath`) at any step. If something looks like it needs one of those, say so and
-let the user do it (D-025).
+let the user do it (D-027(1)).
 
 ## 1. Refuse nesting, and check granularity
 
@@ -39,9 +39,9 @@ user about which files to have:
 | `.repo-clean` | Home marker, empty |
 | `CLAUDE.md` | Routing table and rules |
 | `README.md` | What it is, how to run it |
-| `docs/DECISIONS.md` | What we believe and why; open items and enhancements |
+| `docs/DECISIONS.md` | What we believe and why; what's waiting (`Status: open`) |
 | `docs/DEFECTS.md` | What is broken |
-| `docs/log/<year>.md` | What happened; `State:` and `Next:` on the last entry |
+| `docs/log/<year>.md` | What happened; the last entry is where work left off |
 | `docs/archive/` and its `README.md` | Rationale, banner-marked |
 | `docs/research/<subject>.md` | Evidence, optional, one per subject |
 
@@ -54,8 +54,8 @@ decision in the new register.
 
 **Existing trackers.** For each one, offer the user a choice:
 
-- **Adopt** — lift its current state and next steps into the new log's first entry
-  (`State:`, `Next:`), then archive the tracker with a banner. Don't leave it beside the new
+- **Adopt** — write its current state and next steps into the new log's first entry as
+  prose, make each waiting item an `open` decision, then archive the tracker with a banner. Don't leave it beside the new
   files: that gives one job two homes.
 - **Convert** — move its content into the standard files (decisions to `DECISIONS.md`,
   defects to `DEFECTS.md`, history to the log), then archive it the same way.
@@ -89,9 +89,9 @@ where the home is (D-023).
 | Question | Authority |
 |---|---|
 | What this is, how to run it | `README.md` |
-| What we believe and why (D-NNN) | `docs/DECISIONS.md` |
+| What we believe and why (D-NNN), and what's waiting (`Status: open`) | `docs/DECISIONS.md` |
 | What is broken | `docs/DEFECTS.md` |
-| What happened, current state and next steps | `docs/log/<year>.md` — the last entry's `State:` and `Next:` |
+| What happened, and where work left off | `docs/log/<year>.md` — the last entry |
 | <one row per research subject> | `docs/research/<subject>.md` |
 
 Every question has exactly one authoritative file. If no row matches, ask before creating a
@@ -136,7 +136,8 @@ Every `Status: open` entry below, in one place.
   - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the replacement.
   - `rejected`: considered, never in force; carries no `Supersedes:` or `Superseded-by:` link.
     Don't propose it again without new evidence.
-  - `open`: undecided; needs `Revisit:` and a row in the Open-questions table.
+  - `open`: undecided, or wanted and not yet taken up (D-019); needs `Revisit:` and a row in
+    the Open-questions table.
 
 Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`.
 
@@ -162,12 +163,11 @@ is fixed, delete the entry; the log entry for the fix names it.
 **`docs/log/<year>.md`**:
 
 ```markdown
-> **Format for new entries** (append-only): `## YYYY-MM-DD [(N)] — headline`, `(N)` only
-> when more than one entry shares a date. Then `Decisions:` (D-NNN this entry touched, or
-> `none`) and `Docs:` (files changed), plus `State:` (what's true now) and `Next:` (what to
-> do next) on the log's last entry only, across year files. Current state is always
-> `grep -h '^State:' docs/log/*.md | tail -1`. An entry is what someone needs to resume —
-> typically 5 to 15 lines — not a narrative of the session.
+> **Format for new entries** (append-only; never edit an entry): `## YYYY-MM-DD [(N)] —
+> headline`, `(N)` only when more than one entry shares a date. Then `Decisions:` (D-NNN this
+> entry touched, or `none`) and `Docs:` (files changed), and prose: what happened and where
+> work left off. Waiting work is an `open` decision, not a line here. An entry is what someone
+> needs to resume — typically 5 to 15 lines — not a narrative of the session.
 
 # <year> log
 
@@ -175,8 +175,8 @@ is fixed, delete the entry; the log entry for the fix names it.
 
 Decisions: D-001
 Docs: CLAUDE.md, docs/DECISIONS.md, docs/DEFECTS.md
-State: Doc system scaffolded; checker passing. <adopted tracker's state, if any>
-Next: <adopted tracker's next steps, or the first piece of work>
+
+Doc system scaffolded; checker passing. <adopted tracker's state and next steps, if any>
 ```
 
 **`docs/research/<subject>.md`** (only for subjects a routing row actually names):

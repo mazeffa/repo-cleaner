@@ -8,28 +8,25 @@ at or above the cwd, or a bad --root) or on any unhandled exception. Prints one 
 finding either way. With no --root, the home is the nearest `.repo-clean` marker at or above
 the current folder.
 
-Rules (stable string ids, used in inline suppression comments; D-024):
+Rules (stable string ids, used in inline suppression comments; D-027(7)):
   decisions-integrity   Unique IDs in the decision register, closed-vocabulary Status
                          read from the entry body only, symmetric supersession
                          (every id in Supersedes:/Superseded-by: is checked, not just
                          the first).
   log-fields-resolve    docs/log/*.md 'Decisions:'/'Docs:' fields resolve to real ids/
                          real .md paths; a field's value may wrap onto following lines.
-                         Only .md targets are checked (D-016(b)) - a missing dated output
+                         Only .md targets are checked (D-027(5)) - a missing dated output
                          file or a renamed script is routine, not a broken doc link.
   outside-repo-paths    No out-of-repo path in a living doc. The default catches paths under
                          a home folder: C:\Users\, ~, /home, /Users, /root, and Git Bash
-                         /<letter>/Users or /<letter>/home (D-016(a)).
+                         /<letter>/Users or /<letter>/home (D-027(4)).
   paths-exist           Backtick-quoted .md paths in living docs must exist, checked
                          case-exactly regardless of OS; a trailing '/' requires a directory.
                          Non-.md targets (scripts, data, generated output) are not checked
-                         (D-016(b)).
-  banned-headers        No 'Next Steps'-style header anywhere - next steps live only in the
-                         current log entry's Next: field (D-016(c)); narrowed from
-                         TODO/Next Steps/Future Work by D-017.
-  log-grammar           At least one dated entry; log heading grammar, required fields; only the
-                         log's last entry, across period files, carries State: and Next: - and it
-                         must carry both (D-016(c)).
+                         (D-027(5)).
+  log-grammar           At least one dated entry; log heading grammar; every entry carries
+                         Decisions: and Docs:. State:/Next: lines are history, not checked
+                         (D-027(6)).
   open-questions-sync   Open-questions table <-> Status: open entries, Revisit: required.
   routing-coverage      Every living doc is referenced in the routing file's table
                          (table rows only, a leading './' normalized).
@@ -52,15 +49,15 @@ LIVING_ROOTS = ("CLAUDE.md", "README.md")
 DOCS_DIR = "docs"
 EXEMPT_DIRS = ("docs/archive", "docs/log")
 DECISIONS_FILE = "docs/DECISIONS.md"
+DEFECTS_FILE = "docs/DEFECTS.md"
 ID_PREFIX = "D-"
 STATUS_VOCAB = ("active", "superseded", "rejected", "open")
 OPEN_QUESTIONS_SECTION = ("## Open questions", "## Fields")
 LOG_DIR = "docs/log"
 ROUTING_FILE = "CLAUDE.md"
 ROUTING_EXEMPT_TOPDIRS = ("archive", "log", "research")
-BANNED_HEADER_RE = r"^#+.*\bNext Steps\b"
 OUTSIDE_PATH_RE = (
-    r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-016(a)); other drives are shared
+    r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-027(4)); other drives are shared
     r"|~[\\/]"                           # ~/ or ~\
     r"|(?:^|[\s`(\[])/(?:home|Users|root)/"          # unix absolute home dirs
     r"|(?:^|[\s`(\[])/[A-Za-z]/(?:Users|home)/"      # Git Bash /c/Users, /c/home
@@ -272,7 +269,7 @@ def candidate_path(ctx, token, known_roots):
 
 def docs_field_paths(ctx, value, known_roots):
     """Tokens out of a `Docs:` field value that look confidently like paths to
-    documentation. Only a token ending in '.md' counts (D-016(b)): a version number,
+    documentation. Only a token ending in '.md' counts (D-027(5)): a version number,
     section number, script, data file, or generated output is skipped, since a missing
     dated output file or a renamed script is routine, not a broken doc link. 'none',
     URLs, and Windows drive paths are always skipped."""
@@ -403,7 +400,7 @@ def check_outside_repo_paths(ctx, errors, docs):
 
 
 def is_doc_target(s):
-    """True for a path this rule should still validate (D-016(b)): a markdown file, or
+    """True for a path this rule should still validate (D-027(5)): a markdown file, or
     a markdown file's own directory-shaped mistake ('foo.md/'). False for a script, data
     file, generated output, or plain directory reference - those are not documentation
     links, and a missing one is routine."""
@@ -428,16 +425,6 @@ def check_paths_exist(ctx, errors, docs):
                         errors.append(f"{p.relative_to(ctx.root)}:{i}: path does not exist: {s}")
 
 
-def check_banned_headers(ctx, errors, docs):
-    pat = re.compile(BANNED_HEADER_RE, re.I)
-    for p in docs_plus_log(ctx):
-        for i, line in enumerate(read_doc(p).splitlines(), 1):
-            if line_ignored(line, "banned-headers"):
-                continue
-            if pat.match(line):
-                errors.append(f"{p.relative_to(ctx.root)}:{i}: banned section header: {line.strip()}")
-
-
 LOG_HEAD_START_RE = re.compile(r"^## (\d{4}-\d{2}-\d{2})(?: \((\d+)\))?")
 LOG_HEADING_GRAMMAR_RE = re.compile(r"^## \d{4}-\d{2}-\d{2}(?: \(\d+\))? [\u2014-] .+$")
 OLD_DATED_HEADING_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}")
@@ -452,16 +439,24 @@ def log_entries(ctx):
     return out
 
 
-def current_fields(root):
-    """The parsed fields of the log's last entry (State:, Next:, ...) - the one definition of
-    "current state", shared by the checker and the SessionStart hook."""
-    entries = log_entries(Ctx(root))
-    return parse_fields(entries[-1][2]) if entries else {}
+def open_items(root):
+    """What is waiting, read from the files that own it (D-027(a)): each `Status: open`
+    decision and each defect heading (a fixed defect is deleted), as 'ID - title'.
+    A missing file yields nothing."""
+    out = []
+    p = root / DECISIONS_FILE
+    if p.exists():
+        heading_re = re.compile(rf"^## {re.escape(ID_PREFIX)}\d+\b.*$")
+        out += [h[3:].strip() for h, body in split_entries(read_doc(p), heading_re)
+                if parse_fields(body).get("Status") == "open"]
+    p = root / DEFECTS_FILE
+    if p.exists():
+        out += [line[4:].strip() for line in read_doc(p).splitlines() if line.startswith("### DEF-")]
+    return out
 
 
 def check_log_grammar(ctx, errors, docs):
-    all_entries = log_entries(ctx)
-    if not all_entries:
+    if not log_entries(ctx):
         errors.append(f"{LOG_DIR}: no dated entry ('## YYYY-MM-DD \u2014 headline') found")
         return
     log_dir = ctx.root / LOG_DIR
@@ -502,19 +497,6 @@ def check_log_grammar(ctx, errors, docs):
                 errors.append(f"{log.name}: entry '{head}' missing a Decisions: line")
             if "Docs" not in fields:
                 errors.append(f"{log.name}: entry '{head}' missing a Docs: line")
-
-    name, heading, body = all_entries[-1]
-    fields = parse_fields(body)
-    for field in ("State", "Next"):
-        if not fields.get(field, "").strip():
-            errors.append(f"{name}: last entry '{heading.strip()}' missing a non-empty {field}: line")
-    for name, heading, body in all_entries[:-1]:
-        for field in ("State", "Next"):
-            if parse_fields(body).get(field, "").strip():
-                errors.append(
-                    f"{name}: entry '{heading.strip()}' carries a {field}: line but is not the "
-                    "log's last entry - only the last entry holds current state; delete it"
-                )
 
 
 def check_open_questions_sync(ctx, errors, docs):
@@ -572,7 +554,6 @@ GENERIC_RULES = (
     check_log_fields_resolve,
     check_outside_repo_paths,
     check_paths_exist,
-    check_banned_headers,
     check_log_grammar,
     check_open_questions_sync,
     check_routing_coverage,

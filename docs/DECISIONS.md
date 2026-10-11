@@ -8,6 +8,7 @@ Every `Status: open` entry below, in one place.
 
 | ID | Question | Revisit |
 |---|---|---|
+| D-028 | Deploy to Azure DevOps | when the team is ready |
 
 ## Fields
 
@@ -16,7 +17,8 @@ Every `Status: open` entry below, in one place.
   - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the replacement.
   - `rejected`: considered, never in force; carries no `Supersedes:` or `Superseded-by:` link.
     Don't propose it again without new evidence.
-  - `open`: undecided; needs `Revisit:` and a row in the Open-questions table.
+  - `open`: undecided, or wanted and not yet taken up (D-019); needs `Revisit:` and a row in
+    the Open-questions table.
 
 Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`.
 
@@ -25,7 +27,7 @@ Status: active   Date: 2026-09-18
 Decision: Track decisions here, route questions through CLAUDE.md, log work in
 docs/log/2026.md, and run the repo-clean checker from this repo's own
 `skills/repo-clean/scripts/check_docs.py` working-tree copy (D-015). How the checker is
-enforced is D-025's; commits are not gated.
+enforced is D-027's; commits are not gated.
 Why: The plugin did not use its own system, so every design decision lived only in chat
 and nothing tested whether the system is pleasant to live with.
 
@@ -216,7 +218,8 @@ between machines is real until the policy push lands, and the tool reporting its
 at session start is enough to make a stale install visible.
 
 ## D-016 — Rule set adjusted for analytics work
-Status: active   Date: 2026-09-19
+Status: superseded   Date: 2026-09-19
+Superseded-by: D-027
 Decision: Three changes. (a) The outside-path rule flags only paths under a user's home
 directory; lakehouse URLs, database server names, and corporate network shares are allowed,
 because everyone on the team can reach them. (b) Link resolution applies only to links
@@ -239,7 +242,7 @@ Decision: The system is measured by one outcome: someone opens a project they ha
 touched in months and is working within a minute, reading nothing but what the tool prints.
 That makes the current log entry and the session-start line that prints it the load-bearing
 part, and everything else supporting. A rule stays only if breaking it would make the model
-hallucinate or redo work. Which checker rules pass that test is D-024's list.
+hallucinate or redo work. Which checker rules pass that test is D-027(7)'s list.
 "Contradictions between files" named in an earlier
 draft of this decision is not a checker rule; it is the manual pass in `maintain.md` step 6.
 Why: D-006 asked whether this is more than a structural linter and could not be settled
@@ -355,7 +358,7 @@ genuinely does not fit, the tool asks and the user decides case by case; the exc
 recorded in that project's register. The one in-text escape from a rule that misfires is the
 `<!-- check-docs: ignore RULE -->` comment on the line. (3) Undoing `reorganize`'s own
 edits (`git restore` of the files it moved or rewrote, deleting the copies it created) is not
-one of the git actions D-025(1) rules out; `git reset --hard` is never used.
+one of the git actions D-027(1) rules out; `git reset --hard` is never used.
 Why: Code in a project is code the project's last editor chose, and running it because a
 session opened there is a way for a repo to run anything on a teammate's machine. The add-on
 file was also the only thing that could widen or disable a rule, so it was the one way two
@@ -371,7 +374,7 @@ Decision: Same belief as D-018 (a) and (b), without (c). (a) The marker `.repo-c
 empty file; its presence is the whole declaration. (b) The hooks and the checker find the
 home by walking up from the working directory (the checker: from the current folder when
 `--root` is not given) to the nearest marker. When none is found, the session-start hook
-globs two levels down for marked homes and names them (D-025(e)); the checker exits 2,
+globs two levels down for marked homes and names them (D-027(e)); the checker exits 2,
 since nothing was checked. A folder with `CLAUDE.md` and `docs/log/` but no marker is not a home, and there is
 no `--migrate`.
 Why: (c) existed so installs from before the marker kept working on upgrade. That window is
@@ -380,8 +383,9 @@ over, and every code path keeping it alive — a legacy flag on `find_home`, a o
 to agree on.
 
 ## D-024 — Checker rule set
-Status: active   Date: 2026-10-10
+Status: superseded   Date: 2026-10-10
 Supersedes: D-005
+Superseded-by: D-027
 Decision: A checker rule stays only if breaking it leaves a doc that Claude trusts saying
 something false or ambiguous. Eight rules pass: `decisions-integrity` (a register that
 misnames its own supersession has Claude following a replaced decision), `log-fields-resolve`
@@ -401,8 +405,9 @@ presence is always a decision rather than an accident. Each dropped rule cost co
 key and a selftest fixture to guard against a failure nobody had had.
 
 ## D-025 — Capture by request; the one hook only reads
-Status: active   Date: 2026-10-10
+Status: superseded   Date: 2026-10-10
 Supersedes: D-021
+Superseded-by: D-027
 Decision: Three standing rules from D-021, restated: (1) Git is storage: no commit hook, no
 `core.hooksPath`, nothing keyed on a repo, and `init` and `reorganize` never commit, stash,
 stage or change git settings, including `.gitignore`. (2) Every home gets D-022(2)'s fixed
@@ -450,3 +455,76 @@ a later session proposing the idea again (D-017). One finding per register, rath
 per entry, keeps an upgrading home to a single line; the finding is permanent so a stripped
 `rejected` or `unresolved` cannot be lost quietly. Three independent design passes (minimal
 vocabulary, the reader, migration cost) agreed on deleting the field.
+
+## D-027 — The log is history; nothing stores current state
+Status: active   Date: 2026-10-11
+Supersedes: D-016, D-024, D-025
+Decision: Restates what survives of D-016, D-024 and D-025, and stops storing current state
+in the log.
+(1) Git is storage: no commit hook, no `core.hooksPath`, nothing keyed on a repo, and `init`
+and `reorganize` never commit, stash, stage or change git settings, including `.gitignore`.
+(2) Every home gets D-022(2)'s fixed file set.
+(3) No PowerShell anywhere in the plugin, for any reason, including as a fallback shell: Git
+Bash is required, and a machine without it runs no hooks and cannot say so.
+(4) The outside-path rule flags only paths under a user's home directory; lakehouse URLs,
+database server names and corporate network shares are allowed, because everyone on the team
+can reach them.
+(5) Link resolution applies only to links pointing at documentation; links to data files and
+generated outputs are not checked.
+(6) The log is append-only dated history. No entry carries `State:` or `Next:`, and no entry is
+edited. Current state is read from its owners: git, `plugin.json`, `docs/DEFECTS.md` and the
+open decisions. Work waiting on a trigger is an `open` decision with `Revisit:` (D-019). Where
+work left off is the last entry's dated prose. A "Next Steps" heading is no longer banned. Old
+`State:`/`Next:` lines in existing logs stay as history and are not findings.
+(7) A checker rule stays only if breaking it leaves a doc that Claude trusts saying something
+false or ambiguous. Seven rules pass: `decisions-integrity` (a register that misnames its own
+supersession has Claude following a replaced decision), `log-fields-resolve` (a log entry
+naming a decision or doc that is not there sends Claude to invent it), `outside-repo-paths` (a
+path nobody else can open), `paths-exist` (a link to a missing `.md`), `log-grammar` (a bad
+heading or a missing `Decisions:`/`Docs:` makes an entry undatable or unresolvable),
+`open-questions-sync` (an open decision missing from the table is never revisited), and
+`routing-coverage` (a doc no row names is not found). `archive-banner-paths` and
+`research-fields` stay dropped; the archive banner and the research `Status:`/`Date:` header
+are conventions, unenforced.
+(a) One hook, SessionStart. It prints the last log entry's heading, how many days old that
+entry is, its body, each open decision and open defect by headline, the plugin version, and
+any checker finding. It never shells out to git: a home in a subfolder would report the whole
+repo, and a repo with no remote has no ahead/behind. It records nothing except offered.json,
+the folders already offered setup, so the offer fires once. A headless turn in a new folder
+can use that offer up; accepted. It never blocks. There is no end-of-response hook and no edit
+hook. SessionStart also runs in headless claude -p turns and prints there; the cost is
+accepted, and the fix belongs to the callers.
+(b) `maintain` is the one act that writes the docs. It writes the log from the current
+conversation when the user asks ("log this", "/repo-clean maintain") or says the session is
+over; nothing starts it at session start.
+(c) No session record and no code that reads transcripts. Claude Code's own transcript, kept
+30 days by default in the user's Claude projects folder, is where a session nobody logged can
+still be read by hand.
+(d) Doc findings are reported at session start and by `maintain`'s checker step; a doc edited
+in ordinary work is unchecked until one of those runs.
+(e) Opened above several homes, the hook prints one line naming them: the first three, then
+"and N more".
+(f) Scaffold text in homes set up earlier is point-in-time and is not rewritten. Apart from
+offered.json (a), the plugin never writes outside the target repo.
+(g) The old session-registry folder in the user's Claude settings area is dead and never read.
+Why: `State:` and `Next:` were present-tense copies of facts owned elsewhere (git,
+`plugin.json`, DEFECTS.md, the register), which breaks one fact, one place. On first real use
+they kept going false: "0.12.0 is built but not committed" was committed in the commit that
+made it false, "Push 0.13.0" went stale on push, and each release needed a follow-up "log the
+commit" entry, itself a new commit. The test is cadence: a stored present-tense fact that
+changes faster than it is written goes false. Keeping them cost an exception to append-only, a
+checker rule, the "Next Steps" heading ban (D-016(c)), which existed only to protect `Next:`,
+and about 30 selftest references. Every `Next:` the log ever dropped was a git or plugin chore
+except the Azure DevOps deploy, which never moved and is now D-028. A council review on
+2026-10-11 (3 of 4 models) agreed and added: no git in the hook, the hook points rather than
+asserts, and waiting work has one home. A new `Pending:` field was proposed there and not
+taken: D-019 already gives waiting work an `open` entry the checker keeps in sync. D-016's and
+D-024's other reasons stand as written there.
+
+## D-028 — Deploy to Azure DevOps
+Status: open   Date: 2026-10-11
+Revisit: when the team is ready
+Decision: Production deploy moves from GitHub to Azure DevOps (README Install), where D-011
+places the repo. Not done yet.
+Why: Carried over from the last `Next:` line the log held (D-027(6)); it is the one waiting
+item that was not a git or plugin chore.

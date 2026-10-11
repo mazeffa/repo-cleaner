@@ -1,7 +1,7 @@
 # maintain
 
 Write what this session did into the docs: route each fact to the file that owns it, write
-one log entry, then run the checker. This is the one act that writes the docs (D-025).
+one log entry, then run the checker. This is the one act that writes the docs (D-027(b)).
 
 It runs when the user asks (`/repo-clean maintain`, "log this") or says the session is over.
 Opened above several homes, run it once for each home the session changed, passing that
@@ -61,14 +61,13 @@ than interrupting per-item.
 
 One entry per `maintain` run. Add a
 `## YYYY-MM-DD [(N)] — headline` entry (grammar: `SKILL.md` Vocabulary) with
-`Decisions:` and `Docs:` fields, then `State:` (what's true now) and `Next:` (what to do
-next). Remove `State:` and `Next:` from the previous last entry — only the last entry carries
-them. When the detail is longer than an entry should hold (`SKILL.md` Principles), `State:`
-may point to the file that holds it.
+`Decisions:` and `Docs:` fields. Write where you left off as prose; never edit an earlier
+entry. Anything waiting on a trigger becomes an `open` decision, not a line in the entry
+(`SKILL.md` Principles). When the detail is longer than an entry should hold, point to the
+file that holds it.
 
 Write to `docs/log/<current year>.md`. If that file doesn't exist yet, create it with the
-same format note at the top as last year's, and remove `State:` and `Next:` from the last
-entry of last year's file.
+same format note at the top as last year's.
 
 "Where does this go?" asked mid-session is this same routing step, answered in words instead
 of applied to a file.
@@ -90,6 +89,8 @@ raise them with the user, in `--check` mode just list them:
 - Topics discussed in the repo (issues, comments, commit messages) with no routing-table row.
 - A fact restated in 2+ living docs in different words, or a doc restating a code constant.
   The checker cannot compare docs to code or to each other for meaning — only structure.
-- A log's last `State:` line that looks stale against recent `git log` activity.
+- A doc line stating present-tense status that changes faster than docs are written —
+  commit, push or deploy status, "currently running" — instead of dating it or pointing to
+  its owner (D-027(6)).
 - A research doc whose `Date:` is old relative to the code it describes.
 - An `open` decision whose `Revisit:` trigger has clearly already been met.
