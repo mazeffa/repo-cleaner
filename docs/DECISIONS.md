@@ -418,9 +418,9 @@ in ordinary work is unchecked until one of those runs.
 (f) Scaffold text in homes set up earlier is point-in-time and is not rewritten; the log is
 the truth. The plugin never writes outside the target repo.
 (g) The old session-registry folder in the user's Claude settings area is dead and never read.
-Why: debate 3 and the LLM council, 2026-10-10. D-021(4) put a fold-in ahead of the first
+Why: a design review, 2026-10-10. D-021(4) put a fold-in ahead of the first
 minute D-017 measures, and its queue grew by one with every automated session: the
-session-start line told each headless debate turn to fold in before other work. The
+session-start line told each headless automated session to fold in before other work. The
 turn-end block D-021(6) added was never seen working under the real runner. The capture
 machinery (three hook files, the session registry, about 400 test lines) was the only state
 two sessions had to agree on.

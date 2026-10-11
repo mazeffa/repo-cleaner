@@ -1,3 +1,5 @@
 .council/
 __pycache__/
 *.pyc
+debates/
+plan.md
