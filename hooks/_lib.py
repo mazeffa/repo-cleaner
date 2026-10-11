@@ -19,8 +19,8 @@ def normalize_cwd(cwd):
 
 
 def read_stdin_json():
-    """Malformed or empty stdin is never a reason to block or crash - treat it as no
-    data (missing session_id/cwd/tool_input), same as a payload without those keys."""
+    """Malformed or empty stdin is never a reason to crash - treat it as no data, same as a
+    payload without the keys."""
     try:
         data = json.loads(sys.stdin.read())
     except Exception:

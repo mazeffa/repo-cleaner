@@ -83,12 +83,12 @@ In write mode, fix findings until it exits 0. In `--check` mode, report them and
 
 ## 6. The pass the checker can't do
 
-The checker verifies shape. These need reading, and belong in both modes — in write mode
-raise them with the user, in `--check` mode just list them:
+The checker verifies shape (`README.md`, "What the checker does not tell you"). These need
+reading, and belong in both modes — in write mode raise them with the user, in `--check`
+mode just list them:
 
 - Topics discussed in the repo (issues, comments, commit messages) with no routing-table row.
 - A fact restated in 2+ living docs in different words, or a doc restating a code constant.
-  The checker cannot compare docs to code or to each other for meaning — only structure.
 - A doc line stating present-tense status that changes faster than docs are written —
   commit, push or deploy status, "currently running" — instead of dating it or pointing to
   its owner (D-027(6)).

@@ -82,8 +82,7 @@ have `scripts/hooks/pre-commit`; it is no longer used, and you can delete it and
 `git config --unset core.hooksPath`.
 
 You can also run the checker directly, without a session, from wherever the plugin cache
-put it. With no `--root` it checks the nearest `.repo-clean` home at or above the current
-folder; with none, it exits 2:
+put it (`--root`, its default and the exit codes: `skills/repo-clean/SKILL.md`, "Checker"):
 
 ```
 python <plugin-cache>/skills/repo-clean/scripts/check_docs.py --root DIR

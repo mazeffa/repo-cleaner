@@ -66,13 +66,10 @@ def make_home(parent, name, broken=False):
     return h
 
 
-EVENT_OF = {"session_start.py": "SessionStart"}
-
-
-def payload(name, fields):
+def payload(fields):
     """Test fields overlaid on the real payload captured from a live Claude Code session
-    (hooks/fixtures/<Event>.json), so every assertion runs against the real key set."""
-    f = FIXTURES_DIR / f"{EVENT_OF.get(name, '')}.json"
+    (hooks/fixtures/SessionStart.json), so every assertion runs against the real key set."""
+    f = FIXTURES_DIR / "SessionStart.json"
     data = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
     data.update(fields)
     return data
@@ -81,10 +78,9 @@ def payload(name, fields):
 def run_hook(name, data, home, input_text=None, extra_env=None, args=(), hooks_dir=None):
     env = dict(os.environ)
     env["REPO_CLEAN_HOME"] = str(home)
-    env.pop("CLAUDE_CODE_SESSION_ID", None)  # this session's own id must not leak in
     if extra_env:
         env.update(extra_env)
-    stdin = input_text if input_text is not None else json.dumps(payload(name, data or {}))
+    stdin = input_text if input_text is not None else json.dumps(payload(data or {}))
     out = subprocess.run(
         [sys.executable, str((hooks_dir or HOOKS_DIR) / name), *args],
         input=stdin, capture_output=True, text=True, encoding="utf-8", env=env,
@@ -274,8 +270,7 @@ def test_find_home(base):
 
 
 def test_launcher(base):
-    """run.sh finds a Python, or says there is none - on stdout for session_start (into
-    Claude's context), on stderr for the other hooks - and exits 0 either way."""
+    """run.sh finds a Python, or says on stdout there is none, and exits 0 either way."""
     bash = shutil.which("bash")
     if not bash:
         print("skip: run.sh tests - no bash on PATH")
@@ -292,9 +287,6 @@ def test_launcher(base):
     out = run("session_start", bare)
     check("run.sh: no Python - session_start says so on stdout and exits 0",
           out.returncode == 0 and "no Python 3.8+ found" in out.stdout, out)
-    out = run("stop", bare)
-    check("run.sh: no Python - stop says so on stderr and exits 0",
-          out.returncode == 0 and "no Python 3.8+ found" in out.stderr and not out.stdout, out)
     out = run("session_start", dict(os.environ, REPO_CLEAN_HOME=str(base / "state_launcher")),
               json.dumps({"cwd": str(empty)}))
     check("run.sh: with Python, it runs the hook", out.returncode == 0 and not out.stderr, out)
@@ -302,10 +294,9 @@ def test_launcher(base):
 
 def test_bad_input(base):
     state = base / "state_bad"
-    for hook in ("session_start.py",):
-        for text in ("", "not json{{{", json.dumps({"foo": "bar"}), "[1, 2]"):
-            rc, out, err = run_hook(hook, None, state, input_text=text)
-            check(f"{hook}: bad stdin {text[:8]!r} exits 0", rc == 0, (out, err))
+    for text in ("", "not json{{{", json.dumps({"foo": "bar"}), "[1, 2]"):
+        rc, out, err = run_hook("session_start.py", None, state, input_text=text)
+        check(f"session_start.py: bad stdin {text[:8]!r} exits 0", rc == 0, (out, err))
 
 
 def test_check_docs_no_home(base):
@@ -556,7 +547,7 @@ def test_checker_rules(base):
     except SystemExit as e:
         check("rules: DEF-19 an unknown flag exits 2", e.code == 2, e.code)
 
-    # F1 (debate 4): a log with no recognisable dated entry is a finding, not a silent pass.
+    # a log with no recognisable dated entry is a finding, not a silent pass.
     z = make_home(base, "zero entry home")
     zlog = z / "docs" / "log" / "2026.md"
     for label, text, want in (

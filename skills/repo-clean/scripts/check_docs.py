@@ -34,10 +34,13 @@ Rules (stable string ids, used in inline suppression comments; D-027(7)):
 Fenced code blocks (```...```) are blanked before any rule reads a document, so an example
 heading or field name inside a fence is never mistaken for real content.
 
-Suppression, three layers:
-  1. EXEMPT_DIRS                                      - whole directories, always exempt.
-  2. ROUTING_EXEMPT_TOPDIRS                            - docs/<topdir> exempt from routing-coverage only.
-  3. <!-- check-docs: ignore <rule-id> --> on a line   - suppresses one hit on that line.
+Suppression:
+  1. EXEMPT_DIRS                - whole directories, always exempt.
+  2. ROUTING_EXEMPT_TOPDIRS     - docs/<topdir> exempt from routing-coverage only.
+  3. PATH_SUPPRESSED_PREFIXES   - generated output, never a doc link (D-027(5)).
+  4. <!-- check-docs: ignore <rule-id> --> - on a line, for outside-repo-paths and
+     paths-exist; anywhere in a docs/ file, exempts that file from routing-coverage.
+     The other rules have no in-text escape.
 """
 import argparse
 import os
@@ -200,8 +203,8 @@ def living_docs(ctx):
     return files
 
 
-def docs_plus_log(ctx):
-    files = list(living_docs(ctx))
+def docs_plus_log(ctx, docs):
+    files = list(docs)
     log_dir = ctx.root / LOG_DIR
     if log_dir.exists():
         files += sorted(log_dir.glob("*.md"))
@@ -298,6 +301,13 @@ def docs_field_paths(ctx, value, known_roots):
 # ---------------------------------------------------------------------------
 
 VERDICT_RE = re.compile(r"(?:^|\s)Verdict:", re.M)  # raw text: also catches 'Status: x Verdict: y'
+DECISION_HEADING_RE = re.compile(rf"^## ({re.escape(ID_PREFIX)}\d+)\b.*$")
+
+
+def decision_entries(text):
+    """(id, heading, body lines, fields) for each `## D-NNN` entry of the decision register."""
+    return [(DECISION_HEADING_RE.match(h).group(1), h, b, parse_fields(b))
+            for h, b in split_entries(text, DECISION_HEADING_RE)]
 
 
 def check_decisions_integrity(ctx, errors, docs):
@@ -308,23 +318,18 @@ def check_decisions_integrity(ctx, errors, docs):
         return
     prefix = re.escape(ID_PREFIX)
     id_re = re.compile(prefix + r"\d+")
-    heading_re = re.compile(rf"^## {prefix}\d+\b.*$")
     text = read_doc(p)
     for n, line in enumerate(text.split("\n"), 1):
         m = re.match(rf"^(?:#|#{{3,}}) ({prefix}\d+)", line)
         if m:
             errors.append(f"{DECISIONS_FILE}:{n}: {m.group(1)}: decision heading must be '## {ID_PREFIX}NNN'")
-    entries = split_entries(text, heading_re)
     ids = set()
     verdict_ids = []
     superseded_by, supersedes = {}, {}
-    for heading, body in entries:
-        m = re.match(rf"^## ({prefix}\d+)", heading)
-        eid = m.group(1)
+    for eid, _, body, fields in decision_entries(text):
         if eid in ids:
             errors.append(f"{DECISIONS_FILE}: duplicate id {eid}")
         ids.add(eid)
-        fields = parse_fields(body)
         status = fields.get("Status")
         if VERDICT_RE.search("\n".join(body)):
             verdict_ids.append(eid)
@@ -369,29 +374,24 @@ LOG_HEADING_RE = re.compile(r"^## \d{4}-\d.*$", re.M)
 
 
 def check_log_fields_resolve(ctx, errors, docs):
-    log_dir = ctx.root / LOG_DIR
-    if not log_dir.exists():
-        return
     prefix = re.escape(ID_PREFIX)
     id_re = re.compile(prefix + r"\d+")
     known_roots = top_level_names(ctx)
-    for log in sorted(log_dir.glob("*.md")):
-        text = read_doc(log)
-        for heading, body in split_entries(text, LOG_HEADING_RE):
-            fields = parse_fields(body)
-            if ctx.decision_ids is not None and "Decisions" in fields:
-                for d in id_re.findall(fields["Decisions"]):
-                    if d not in ctx.decision_ids:
-                        errors.append(f"{log.name}: Decisions: references unknown {d}")
-            if "Docs" in fields:
-                for path in docs_field_paths(ctx, fields["Docs"], known_roots):
-                    if not exists_exact(ctx.root, path):
-                        errors.append(f"{log.name}: Docs: references missing {path}")
+    for name, heading, body in log_entries(ctx):
+        fields = parse_fields(body)
+        if ctx.decision_ids is not None and "Decisions" in fields:
+            for d in id_re.findall(fields["Decisions"]):
+                if d not in ctx.decision_ids:
+                    errors.append(f"{name}: Decisions: references unknown {d}")
+        if "Docs" in fields:
+            for path in docs_field_paths(ctx, fields["Docs"], known_roots):
+                if not exists_exact(ctx.root, path):
+                    errors.append(f"{name}: Docs: references missing {path}")
 
 
 def check_outside_repo_paths(ctx, errors, docs):
     pat = re.compile(OUTSIDE_PATH_RE)
-    for p in docs_plus_log(ctx):
+    for p in docs_plus_log(ctx, docs):
         for i, line in enumerate(read_doc(p).splitlines(), 1):
             if line_ignored(line, "outside-repo-paths"):
                 continue
@@ -446,9 +446,8 @@ def open_items(root):
     out = []
     p = root / DECISIONS_FILE
     if p.exists():
-        heading_re = re.compile(rf"^## {re.escape(ID_PREFIX)}\d+\b.*$")
-        out += [h[3:].strip() for h, body in split_entries(read_doc(p), heading_re)
-                if parse_fields(body).get("Status") == "open"]
+        out += [h[3:].strip() for _, h, _, fields in decision_entries(read_doc(p))
+                if fields.get("Status") == "open"]
     p = root / DEFECTS_FILE
     if p.exists():
         out += [line[4:].strip() for line in read_doc(p).splitlines() if line.startswith("### DEF-")]
@@ -513,11 +512,8 @@ def check_open_questions_sync(ctx, errors, docs):
         return
     table_ids = set(re.findall(rf"\|\s*({id_re})\s*\|", m.group(1)))
 
-    heading_re = re.compile(rf"^## {prefix}\d+\b.*$")
     open_ids = set()
-    for heading, body in split_entries(text, heading_re):
-        eid = re.match(rf"^## ({id_re})", heading).group(1)
-        fields = parse_fields(body)
+    for eid, _, _, fields in decision_entries(text):
         if fields.get("Status") == "open":
             open_ids.add(eid)
             if not fields.get("Revisit", "").strip():
@@ -564,7 +560,7 @@ def run_generic_rules(ctx, errors):
     docs = living_docs(ctx)
     for fn in GENERIC_RULES:
         fn(ctx, errors, docs)
-    for p in docs_plus_log(ctx):
+    for p in docs_plus_log(ctx, docs):
         opener = scan_doc(p)[1]
         if opener:
             errors.append(f"{p.relative_to(ctx.root)}:{opener}: unclosed code fence; "

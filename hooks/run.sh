@@ -7,6 +7,5 @@ for py in "py -3" python python3; do  # python3 last: on Windows it is often the
     exec $py "$2/hooks/$1.py"
   fi
 done
-msg='repo-clean: no Python 3.8+ found on PATH; hooks disabled'
-if [ "$1" = session_start ]; then echo "$msg"; else echo "$msg" >&2; fi
+echo 'repo-clean: no Python 3.8+ found on PATH; hooks disabled'
 exit 0

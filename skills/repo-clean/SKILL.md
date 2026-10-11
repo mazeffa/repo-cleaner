@@ -75,8 +75,9 @@ These hold across all three subcommands:
   measurements, accuracy, how something actually behaves. Rewritten in place rather than
   appended to, so it always reads as current, and carrying `Status:`/`Date:` because
   nothing else reveals its age (a convention the checker does not enforce, D-027(7)). Evidence goes here; the *belief* drawn from that evidence
-  is a `D-NNN` entry. One session usually produces both. Research docs are exempt from
-  routing coverage — the subject dir is routed, not each file.
+  is a `D-NNN` entry. One session usually produces both. `init` writes one routing row per
+  subject (`init.md`); `routing-coverage` does not require one, so an unrouted research doc
+  is not flagged.
 
 See `example-layout.md` for real excerpts of each of these. It is illustrative, not
 canonical — the inline skeletons in `init.md` are what `init` actually writes.
@@ -96,8 +97,7 @@ runs git (D-027(a)). Opened above several homes, it prints
 one line naming them; with no home near, it points at `/repo-clean init` once.
 
 It runs through `hooks/run.sh`, which finds a Python 3.8+ (`py -3`, `python`, `python3`); if
-there is none it says so instead of silently doing nothing. It runs the plugin's own
-checker, never code found in a project (D-022).
+there is none it says so instead of silently doing nothing.
 
 The log is written when the user asks (`/repo-clean maintain`, "log this") or says the
 session is over — words, not hooks.
