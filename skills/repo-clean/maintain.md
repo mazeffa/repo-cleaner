@@ -2,7 +2,7 @@
 
 Write what this session did into the docs: route each fact to the file that owns it, bring
 the work list up to date, write one log entry, then run the checker. This is the one act that
-writes the log; work rows are also written as things come up (D-029(b)).
+writes the log; work rows are also written as things come up (D-029(1)).
 
 It runs when the user asks (`/repo-clean maintain`, "log this") or says the session is over.
 Opened above several homes, run it once for each home the session changed, passing that
@@ -18,6 +18,17 @@ no writes, no confirmation prompts. Every step below says what `--check` does di
 If `.git` exists and is mid-rebase or mid-merge (`git status` shows unmerged paths), stop
 and say so — `git diff`/`git log` are misleading in that state. Staged and unstaged changes
 otherwise are fine; there's no need for a clean tree here. No `.git` at all: skip this step.
+
+## 0b. Upgrade an older home, once
+
+If `docs/WORK.md` is missing, the home predates the work list (D-029(8)). With the user's
+confirmation: create it from `init.md`'s skeleton; make each decision with `Status: open` a
+row (keep the entry as `active` if it holds a belief, otherwise delete it) and each
+`DEFECTS.md` item a `bug` row; delete `DEFECTS.md`, the register's Open-questions table
+and any `Verdict:` lines (adopted: delete; never in force: `Status: rejected`); and point the
+`CLAUDE.md` routing rows at `docs/WORK.md`. Give each research doc a routing row.
+
+`--check`: list what the upgrade would change.
 
 ## 1. Collect changed facts
 
@@ -95,6 +106,6 @@ mode just list them:
 - A fact restated in 2+ living docs in different words, or a doc restating a code constant.
 - A doc line stating present-tense status that changes faster than docs are written —
   commit, push or deploy status, "currently running" — instead of dating it or pointing to
-  its owner (D-029(6)).
+  its owner (D-029(3)).
 - A research doc whose `Date:` is old relative to the code it describes.
 - An `open` row in `docs/WORK.md` that the work has clearly already finished.

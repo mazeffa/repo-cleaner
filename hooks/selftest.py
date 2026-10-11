@@ -21,7 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_DIR = REPO_ROOT / "hooks"
 FIXTURES_DIR = HOOKS_DIR / "fixtures"
 sys.path.insert(0, str(HOOKS_DIR))
-import _lib  # noqa: E402,F401  - its path insert is how the hooks (and these tests) import check_docs
+sys.path.insert(0, str(REPO_ROOT / "skills" / "repo-clean" / "scripts"))
+import _lib  # noqa: E402
 import check_docs  # noqa: E402
 
 _FAILURES = []
@@ -158,6 +159,17 @@ def test_failing_checker(base):
     check("run_checker: a timeout is 124, not a finding", out.stdout.startswith("124\n"), out)
     check("session_start: a timeout is printed", "checker timed out" in out.stdout[4:], out.stdout + out.stderr)
 
+    slow = base / "slow_checker.py"
+    slow.write_text("import time\nprint('summary first', flush=True)\ntime.sleep(20)\n", encoding="utf-8")
+    real = _lib.checker_path
+    _lib.checker_path = lambda: slow
+    try:
+        code, text = _lib.run_checker(home, timeout=3)
+    finally:
+        _lib.checker_path = real
+    check("run_checker: a timeout keeps what the checker printed first (the summary)",
+          code == 124 and "summary first" in text, (code, text))
+
     missing = stub_plugin(base, "")
     (missing.parent / "skills" / "repo-clean" / "scripts" / "check_docs.py").unlink()
     rc, out, _ = run_hook("session_start.py", {"session_id": "f5", "cwd": str(home),
@@ -203,7 +215,7 @@ def test_session_start(base):
           and lines[3:5] == ["Decisions: none", "Docs: none"] and "left off here" in out
           and "fenced" not in out and re.fullmatch(r"repo-clean \d+\.\d+\.\d+", lines[-1]), out)
     check("session_start: an empty work list says so, first", lines[0] == "nothing open in docs/WORK.md", out)
-    check("session_start: no git output (D-029(a))", "git" not in out.lower(), out)
+    check("session_start: no git output (D-029(5))", "git" not in out.lower(), out)
     check("session_start: prints the entry's age in days",
           "2026-01-01" in out and "days ago" in out, out)
 
@@ -337,12 +349,12 @@ def test_checker_rules(base):
         "Status: active extra words   Superseded-by: D-002\n\n"
         "## D-002 \u2014 b\n"
         "Status: superseded\n\n"
-        # D-029(9): the legacy field is one aggregated finding, naming every entry that still has it.
+        # a retired Verdict: field after two spaces is just another field, no finding
         "## D-003 \u2014 c\n"
         "Status: active   Verdict: adopted\n\n"
         "## D-780 \u2014 legacy field after a single space\n"
         "Status: active Verdict: rejected\n\n"
-        # D-029(9): rejected needs no Superseded-by; superseded still does.
+        # rejected needs no Superseded-by; superseded still does.
         "## D-781 \u2014 rejected, no link needed\n"
         "Status: rejected\n\n"
         "## D-782 \u2014 superseded, names no replacement\n"
@@ -350,7 +362,7 @@ def test_checker_rules(base):
         # a wrong-level heading is flagged, not silently skipped
         "### D-783 \u2014 wrong heading level\n"
         "Decision: x\n\n"
-        # D-029: open is retired; the finding points at the work list.
+        # D-029(2): open is not a decision status.
         "## D-778 \u2014 still waiting\n"
         "Status: open\n\n"
         # DEF-08 quiet case: prose mentions Superseded-by: with a single space, and a
@@ -385,7 +397,7 @@ def test_checker_rules(base):
         "By the way, `docs/ORPHAN.md` is mentioned here in prose, not the table.\n",
         encoding="utf-8",
     )
-    (tmp / "README.md").write_text("fine. Shared drive D:\\data\\lake\\x.csv is fine (D-029(4)).\n", encoding="utf-8")
+    (tmp / "README.md").write_text("fine. Shared drive D:\\data\\lake\\x.csv is fine (D-027(4)).\n", encoding="utf-8")
     (tmp / "docs" / "ROUTED.md").write_text("routed via the table with a leading ./\n", encoding="utf-8")
     (tmp / "docs" / "MOJIBAKE.md").write_bytes(b"# t\n\xff\xfe not utf-8\n")
     (tmp / "docs" / "ORPHAN.md").write_text("unrouted doc\n", encoding="utf-8")
@@ -396,8 +408,16 @@ def test_checker_rules(base):
         "| W-02 | bad type | chore | open | 2099-01-01 | |\n"
         "| W-03 | bad status | bug | pending | 2099-01-01 | |\n"
         "|  | no id | idea | open | 2099-01-01 | |\n"
-        "| W-05 | too few cells | idea | open |\n",
+        "| W-05 | too few cells | idea | open |\n"
+        "| W-01 | duplicate id | task | open | 2099-01-01 | |\n"
+        "| W-09 | done with no Closed | bug | done | 2099-01-01 | |\n"
+        "| W-10 | open with a Closed | bug | open | 2099-01-01 | 2099-01-02 |\n"
+        "| W-11 | a | pipe in a cell | bug | open | 2099-01-01 | |\n"
+        "\n"
+        "| prose after the table | is not a row |\n",
         encoding="utf-8")
+    (tmp / "docs" / "research").mkdir()
+    (tmp / "docs" / "research" / "UNROUTED.md").write_text("evidence\n", encoding="utf-8")
     (tmp / "docs" / "FENCED.md").write_text(
         "# fenced\n"
         "Real content.\n"
@@ -452,11 +472,9 @@ def test_checker_rules(base):
     for label, ok in {
         "bad/missing Status shows the value": has("D-001", "bad/missing Status: 'active extra words'")
             and has("D-780", "bad/missing Status: 'active Verdict: rejected'"),
-        "D-029(9): legacy Verdict is one aggregated finding naming its entries":
-            len([e for e in found if "still carry Verdict:" in e]) == 1
-            and has("2 entries still carry Verdict:", "D-003", "D-780"),
-        "D-029(9): Status: rejected without Superseded-by is quiet": none_has("D-781"),
-        "D-029(9): Status: superseded without Superseded-by fires": has("D-782", "names no Superseded-by"),
+        "the retired Verdict: field has no rule of its own": none_has("Verdict:", "retired"),
+        "Status: rejected without Superseded-by is quiet": none_has("D-781"),
+        "Status: superseded without Superseded-by fires": has("D-782", "names no Superseded-by"),
         "a ### decision heading is flagged": has("D-783", "decision heading must be '## D-NNN'"),
         "an unclosed fence is one finding, and nothing inside it fires":
             len([e for e in found if "unclosed code fence" in e]) == 1
@@ -469,18 +487,27 @@ def test_checker_rules(base):
         "log grammar": has("log heading grammar violated"),
         "duplicate log heading": has("duplicate log heading"),
         "### heading after ##": has("'###' dated heading appears after"),
-        "D-029: Status: open is retired and points at the work list":
-            has("D-778", "Status: open is retired", "docs/WORK.md") and none_has("D-778", "bad/missing"),
+        "D-029(2): Status: open is a bad status, naming the vocabulary":
+            has("D-778", "bad/missing Status: 'open'", "active, superseded, rejected"),
         "work-table: a good row and the header and separator rows are quiet":
             none_has("WORK.md:1:") and none_has("WORK.md:2:") and none_has("WORK.md:3:"),
         "work-table: bad Type, bad Status, no ID and too few cells each fire":
-            all(has(f"WORK.md:{n}:", "bad row") for n in (4, 5, 6, 7)),
+            has("WORK.md:4:", "Type 'chore'") and has("WORK.md:5:", "Status 'pending'")
+            and has("WORK.md:6:", "missing or duplicate ID") and has("WORK.md:7:", "4 cells"),
+        "work-table: duplicate ID, Closed missing or present wrongly, a pipe in a cell":
+            has("WORK.md:8:", "duplicate ID 'W-01'") and has("WORK.md:9:", "Closed must be filled")
+            and has("WORK.md:10:", "Closed must be filled") and has("WORK.md:11:", "7 cells"),
+        "work-table: a '|' line after the table ends is not read": none_has("WORK.md:13:"),
+        "work-table: open_items names unreadable rows instead of skipping them":
+            "W-02 \u2014 bad type" in check_docs.open_items(tmp)
+            and any(":11: unreadable row" in i for i in check_docs.open_items(tmp)),
+        "routing-coverage: a research doc needs a routing row too": has("docs/research/UNROUTED.md", "not referenced"),
         "log-fields-resolve: an older entry's missing doc is history, not a finding": none_has("GONE_OLD"),
         "unrouted doc": has("not referenced in"),
         "Decisions: references an unknown id": has("Decisions: references unknown"),
         "abs path in CLAUDE.md (unix, Git Bash, drive)": has("CLAUDE.md:", "absolute/outside-repo path"),
-        "D-029(4): a non-home drive path is quiet": none_has("README.md:", "absolute/outside-repo path"),
-        "D-029(4): a C:\\Users\\ path still fires": has("2098-08.md:", "absolute/outside-repo path"),
+        "D-027(4): a non-home drive path is quiet": none_has("README.md:", "absolute/outside-repo path"),
+        "D-027(4): a C:\\Users\\ path still fires": has("2098-08.md:", "absolute/outside-repo path"),
         "a one-line multi-field entry parses (D-003)": none_has("D-003", "bad/missing"),
         "DEF-02: a backticked command with a flag is not a missing path": none_has("check_docs.py"),
         "DEF-05: a wrapped Docs: value is read to its last line": has("more-missing.md"),
@@ -501,12 +528,13 @@ def test_checker_rules(base):
     }.items():
         check(f"rules: {label}", ok, found if not ok else "")
 
-    # D-029(6): an upgraded home's old State:/Next: lines and "Next Steps" headings are history,
+    # D-029(3): an upgraded home's old State:/Next: lines and "Next Steps" headings are history,
     # not findings - on any entry, in any period file.
     h = base / "upgrade fixture"
     (h / "docs" / "log").mkdir(parents=True)
     (h / "docs" / "DECISIONS.md").write_text("## D-001 \u2014 a\nStatus: active\n", encoding="utf-8")
-    (h / "docs" / "WORK.md").write_text("| ID | Item | Type | Status | Added | Closed |\n", encoding="utf-8")
+    (h / "docs" / "WORK.md").write_text(
+        "| ID | Item | Type | Status | Added | Closed |\n|---|---|---|---|---|---|\n", encoding="utf-8")
     (h / "CLAUDE.md").write_text("| Q | A |\n|---|---|\n| d | `docs/DECISIONS.md` |\n"
                                  "| w | `docs/WORK.md` |\n", encoding="utf-8")
     (h / "README.md").write_text("fine\n\n## Next Steps\n", encoding="utf-8")
@@ -521,14 +549,21 @@ def test_checker_rules(base):
     ctx = check_docs.Ctx(h)
     f1 = []
     check_docs.run_generic_rules(ctx, f1)
-    check("rules: D-029(6) old State:/Next: lines and a Next Steps heading are no finding", f1 == [], f1)
+    check("rules: D-029(3) old State:/Next: lines and a Next Steps heading are no finding", f1 == [], f1)
 
     o = make_home(base, "open items home")
     (o / "docs" / "WORK.md").unlink()
     fo = []
     check_docs.run_generic_rules(check_docs.Ctx(o), fo)
     check("rules: a missing WORK.md is a finding, and open_items is empty",
-          "docs/WORK.md: file does not exist" in fo and check_docs.open_items(o) == [], fo)
+          any(e.startswith("docs/WORK.md: file does not exist") for e in fo)
+          and check_docs.open_items(o) == [], fo)
+    (o / "docs" / "WORK.md").write_text("# Work\n\nno table yet\n", encoding="utf-8")
+    fo = []
+    check_docs.run_generic_rules(check_docs.Ctx(o), fo)
+    check("rules: a WORK.md with no header row is a finding, and the hook shows it",
+          any("no table header row" in e for e in fo)
+          and any("no table header row" in i for i in check_docs.open_items(o)), fo)
 
     # D-020: a .md the routing table names outside docs/ is read like any living doc.
     (h / "sub").mkdir()

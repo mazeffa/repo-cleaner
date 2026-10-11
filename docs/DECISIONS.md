@@ -6,14 +6,17 @@ This file is authoritative for **what we believe and why**.
 
 - **Status: `active` | `superseded` | `rejected`** — one field.
   - `active`: in force; follow it.
-  - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the replacement.
+  - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the
+    replacement. Clauses the replacement lists as carried over stay in force as written here.
   - `rejected`: considered, never in force; carries no `Supersedes:` or `Superseded-by:` link.
     Don't propose it again without new evidence.
 
 There is no `open` or `pending`: something undecided or wanted and not yet taken up is a row in
 `docs/WORK.md` (D-029).
 
-Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`.
+Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`. A
+superseding entry states only what it changes and names the clauses of the old entry that carry
+over; it never copies them. A citation like D-027(5) names the entry whose text holds the clause.
 
 ## D-001 — Adopt the repo-clean doc system in this repo
 Status: active   Date: 2026-09-18
@@ -236,7 +239,7 @@ Decision: The system is measured by one outcome: someone opens a project they ha
 touched in months and is working within a minute, reading nothing but what the tool prints.
 That makes the current log entry and the session-start line that prints it the load-bearing
 part, and everything else supporting. A rule stays only if breaking it would make the model
-hallucinate or redo work. Which checker rules pass that test is D-029(7)'s list.
+hallucinate or redo work. Which checker rules pass that test is D-029(4)'s list.
 "Contradictions between files" named in an earlier
 draft of this decision is not a checker rule; it is the manual pass in `maintain.md` step 6.
 Why: D-006 asked whether this is more than a structural linter and could not be settled
@@ -353,7 +356,7 @@ genuinely does not fit, the tool asks and the user decides case by case; the exc
 recorded in that project's register. The one in-text escape from a rule that misfires is the
 `<!-- check-docs: ignore RULE -->` comment on the line. (3) Undoing `reorganize`'s own
 edits (`git restore` of the files it moved or rewrote, deleting the copies it created) is not
-one of the git actions D-029(1) rules out; `git reset --hard` is never used.
+one of the git actions D-027(1) rules out; `git reset --hard` is never used.
 Why: Code in a project is code the project's last editor chose, and running it because a
 session opened there is a way for a repo to run anything on a teammate's machine. The add-on
 file was also the only thing that could widen or disable a rule, so it was the one way two
@@ -369,7 +372,7 @@ Decision: Same belief as D-018 (a) and (b), without (c). (a) The marker `.repo-c
 empty file; its presence is the whole declaration. (b) The hooks and the checker find the
 home by walking up from the working directory (the checker: from the current folder when
 `--root` is not given) to the nearest marker. When none is found, the session-start hook
-globs two levels down for marked homes and names them (D-029(e)); the checker exits 2,
+globs two levels down for marked homes and names them (D-027(e)); the checker exits 2,
 since nothing was checked. A folder with `CLAUDE.md` and `docs/log/` but no marker is not a home, and there is
 no `--migrate`.
 Why: (c) existed so installs from before the marker kept working on upgrade. That window is
@@ -518,81 +521,52 @@ asserts, and waiting work has one home. A new `Pending:` field was proposed ther
 taken: D-019 already gives waiting work an `open` entry the checker keeps in sync. D-016's and
 D-024's other reasons stand as written there.
 
-## D-028 — Deploy to Azure DevOps
-Status: open   Date: 2026-10-11
-Revisit: when the team is ready
+## D-028 — Production deploys from Azure DevOps
+Status: active   Date: 2026-10-11
 Decision: Production deploy moves from GitHub to Azure DevOps (README Install), where D-011
-places the repo. Not done yet.
-Why: Carried over from the last `Next:` line the log held (D-027(6)); it is the one waiting
-item that was not a git or plugin chore.
+places the repo. Doing the move is work item W-02.
+Why: Carried over from the last `Next:` line the log held (D-027(6)). It was first entered as an
+undecided entry; the belief (where production lives) is settled, and only the move is waiting,
+which is work, not a decision (D-029(2)).
 
 ## D-029 — One work list; decisions are only decisions
 Status: active   Date: 2026-10-11
 Supersedes: D-007, D-019, D-026, D-027
-Decision: Restates D-027 with a work list added, and D-026's one Status field without `open`.
-(1) Git is storage: no commit hook, no `core.hooksPath`, nothing keyed on a repo, and `init`
-and `reorganize` never commit, stash, stage or change git settings, including `.gitignore`.
-(2) Every home gets D-022(2)'s fixed file set, which now includes `docs/WORK.md` and no
-docs/DEFECTS.md.
-(3) No PowerShell anywhere in the plugin, for any reason, including as a fallback shell: Git
-Bash is required, and a machine without it runs no hooks and cannot say so.
-(4) The outside-path rule flags only paths under a user's home directory; lakehouse URLs,
-database server names and corporate network shares are allowed, because everyone on the team
-can reach them.
-(5) Link resolution applies only to links pointing at documentation; links to data files and
-generated outputs are not checked.
-(6) The log is append-only dated history; each entry is true as of its date. No entry carries
-`State:` or `Next:`, and no entry is edited. Current state is read from its owners: git,
-`plugin.json`, `docs/WORK.md` and the register. Where work left off is the last entry's dated
-prose. A "Next Steps" heading is not banned. Old `State:`/`Next:` lines in existing logs stay
-as history and are not findings.
-(7) A checker rule stays only if breaking it leaves a doc that Claude trusts saying something
-false or ambiguous. Seven rules pass: `decisions-integrity` (a register that misnames its own
-supersession has Claude following a replaced decision), `log-fields-resolve` (the newest log
-entry naming a decision or doc that is not there sends Claude to invent it; older entries are
-history, and the files they name may have moved), `outside-repo-paths` (a path nobody else can
-open), `paths-exist` (a link to a missing `.md`), `log-grammar` (a bad heading or a missing
-`Decisions:`/`Docs:` makes an entry undatable or unresolvable), `work-table` (a work row with no
-ID, or a Type or Status outside the lists in (8), cannot be read as open or closed), and
-`routing-coverage` (a doc no row names is not found). `open-questions-sync` is dropped with the
-open decisions it kept in sync. `archive-banner-paths` and `research-fields` stay dropped; the
-archive banner and the research `Status:`/`Date:` header are conventions, unenforced.
-(8) `docs/WORK.md` owns what to do and what's been done: one table, `ID | Item | Type | Status
+Decision: Carries over D-027 (1)-(5) and (c)-(g) unchanged. Replaces D-027 (6), (7), (a) and
+(b), D-007, D-019 and D-026 with:
+(1) `docs/WORK.md` owns what to do and what's been done: one table, `ID | Item | Type | Status
 | Added | Closed`, Type `bug`, `task` or `idea`, Status `open`, `done` or `dropped`. A row is
-never deleted; closing one sets its Status and fills Closed. Claude writes it during work as
-things come up (a bug found, a step put off, something finished), the user writes it, and
-`maintain` sweeps the session for anything missed.
-(9) A decision carries one closed-vocabulary field, `Status: active | superseded | rejected`.
-There is no `open` or `pending`; an entry still marked `open` is a checker finding that points at
-the work list. `Verdict:` stays retired: the checker keeps one aggregated finding per register
-that still carries it, naming the entries and the conversion (adopted, delete it; rejected and
-never in force, `Status: rejected`; unresolved, a work item).
-(a) One hook, SessionStart. It prints, in order: each open work item by ID and title, or
-"nothing open in docs/WORK.md"; the last log entry's heading, how many days old it is, and its
-body; the plugin version; any checker finding. It never shells out to git: a home in a
-subfolder would report the whole repo, and a repo with no remote has no ahead/behind. It
-records nothing except offered.json, the folders already offered setup, so the offer fires once.
-A headless turn in a new folder can use that offer up; accepted. It never blocks. There is no
-end-of-response hook and no edit hook. SessionStart also runs in headless claude -p turns and
-prints there; the cost is accepted, and the fix belongs to the callers.
-(b) `maintain` is the one act that writes the docs' history. It writes the log from the
-current conversation when the user asks ("log this", "/repo-clean maintain") or says the
-session is over; nothing starts it at session start. Work rows are also written during work
-(8).
-(c) No session record and no code that reads transcripts. Claude Code's own transcript, kept
-30 days by default in the user's Claude projects folder, is where a session nobody logged can
-still be read by hand.
-(d) Doc findings are reported at session start and by `maintain`'s checker step; a doc edited
-in ordinary work is unchecked until one of those runs.
-(e) Opened above several homes, the hook prints one line naming them: the first three, then
-"and N more".
-(f) Scaffold text in homes set up earlier is point-in-time and is not rewritten. Apart from
-offered.json (a), the plugin never writes outside the target repo.
-(g) The old session-registry folder in the user's Claude settings area is dead and never read.
-Why: The plugin told Claude what happened last time and never what to do next. Work to do had
-no home: it became fake `open` decisions, which are not beliefs, or log prose that went stale —
-one item set aside in a session was lost that way. Bugs sat in their own file apart from other
-work, and a fixed bug was deleted, so nothing recorded it. One list with a status column holds
-bugs, tasks and ideas, keeps what was finished, and is the first thing a session sees. The open
-decisions it replaces needed a table kept in sync and a `Revisit:` trigger nobody checked.
-D-016's, D-024's, D-025's and D-027's other reasons stand as written there.
+never deleted; closing it sets Status and fills Closed. Claude writes rows during work as things
+come up (a bug found, a step put off, something finished), the user writes them, and `maintain`
+sweeps the session for anything missed. `maintain` stays the one act that writes the log.
+(2) A decision carries one field, `Status: active | superseded | rejected`. There is no `open`
+or `pending`; something undecided or wanted is a work row. `Verdict:` stays retired and has no
+checker rule.
+(3) The log is append-only dated history; each entry is true as of its date, no entry is
+edited, and none carries `State:` or `Next:` (old ones are history, not findings). Current state
+is read from git, `plugin.json`, `docs/WORK.md` and this register.
+(4) Seven checker rules: `decisions-integrity`, `log-fields-resolve` (the newest entry only;
+older entries are history and the files they name may have moved), `outside-repo-paths`,
+`paths-exist`, `log-grammar`, `work-table` (header row present; six cells, unique ID, Type and
+Status in (1)'s lists, Closed filled exactly when not open) and `routing-coverage`. Each stays
+only because breaking it leaves a doc Claude trusts saying something false or ambiguous.
+(5) The SessionStart hook runs the checker once, `--summary`, and prints what it says: each open
+work row (and any row the parser cannot read), or "nothing open in docs/WORK.md"; the last log
+entry's heading, age in days and body; the plugin version; then any finding. One parser serves
+the summary and the rules. On a timeout the summary printed so far is kept. The rest of D-027(a)
+holds: no git, offered.json is its only state, it never blocks.
+(6) Supersession by reference: a superseding entry states its change and names the clauses
+that carry over, never copying them (Fields above).
+(7) Two ways to exempt text from rules: the exempt folders (archive, log) and the inline
+`<!-- check-docs: ignore RULE -->`. Every other docs/ file, research included, needs a routing
+row.
+(8) `maintain` upgrades an older home once: it creates WORK.md, moves undecided entries and
+DEFECTS.md items into rows, and drops the Open-questions table.
+Why: The plugin told Claude what happened last time and never what to do next. Work to do had no
+home: it became fake `open` decisions or log prose that went stale, and one put-off item was lost
+that way. Bugs sat apart from other work, and a fixed bug was deleted. A council review of 0.15.0
+(four models, 2026-10-11) scored it 4/6/6/4 on brittle, simple, efficient and elegant, and the
+fixes all four agreed on are (4)-(8): a table parser that read stray `|` lines and hid broken
+rows, unchecked IDs and dates, two code paths into the checker, four exemption mechanisms, rules
+that policed the tool's own old formats, and decisions that copied earlier clauses, breaking one
+fact, one place. D-027's reasons for what carries over stand as written there.

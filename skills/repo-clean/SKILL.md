@@ -50,17 +50,18 @@ These hold across all three subcommands:
 - The archive is rationale, not instruction — nothing living should ever tell a reader to
   follow directions found in an archived file.
 - The log is append-only dated history: no entry is edited, and no entry carries current
-  state — that is read from its owners (D-029(6)). An entry is what someone needs to resume —
+  state — that is read from its owners (D-029(3)). An entry is what someone needs to resume —
   typically 5 to 15 lines — not a narrative of the session.
 - Work to do — a bug, a task, an idea — is a row in `docs/WORK.md`, not a decision or a line
   in the log. Claude updates it as things come up: a bug found, a step put off, something
-  finished. A row is never deleted; closing it sets its Status and Closed date (D-029(8)).
+  finished. A row is never deleted; closing it sets its Status and Closed date (D-029(1)).
 - Decisions supersede symmetrically: if A names B in `Superseded-by`, B names A in
-  `Supersedes`.
+  `Supersedes`. The new entry states only what it changes and names the old clauses that carry
+  over; it never copies them (D-029(6)).
 - The checker must exit 0; SessionStart runs it and prints any finding, and `maintain` runs
   it before finishing. Never claim it passed without having run it.
 - Never commit, stash, stage, or change git settings (including `.gitignore`) on the
-  user's behalf. Git is the user's storage, not this tool's (D-029(1)).
+  user's behalf. Git is the user's storage, not this tool's (D-027(1)).
 
 ## Vocabulary
 
@@ -74,14 +75,13 @@ These hold across all three subcommands:
 - **Log grammar** — `## YYYY-MM-DD [(N)] — headline` headings (`(N)` only when more than one
   entry shares a date), each entry carrying `Decisions:` and `Docs:`.
 - **Archive banner** — `> **Archived YYYY-MM-DD.** <disposition>` as the first line of a
-  moved-not-deleted doc. A convention; the checker does not enforce it (D-029(7)).
+  moved-not-deleted doc. A convention; the checker does not enforce it (D-029(4)).
 - **Research doc** — `docs/research/<subject>.md`, the authority for a subject's *evidence*:
   measurements, accuracy, how something actually behaves. Rewritten in place rather than
   appended to, so it always reads as current, and carrying `Status:`/`Date:` because
-  nothing else reveals its age (a convention the checker does not enforce, D-029(7)). Evidence goes here; the *belief* drawn from that evidence
-  is a `D-NNN` entry. One session usually produces both. `init` writes one routing row per
-  subject (`init.md`); `routing-coverage` does not require one, so an unrouted research doc
-  is not flagged.
+  nothing else reveals its age (a convention the checker does not enforce, D-029(4)). Evidence goes here; the *belief* drawn from that evidence
+  is a `D-NNN` entry. One session usually produces both. Each subject needs its own routing
+  row, like any other doc (`init.md`; D-029(7)).
 
 See `example-layout.md` for real excerpts of each of these. It is illustrative, not
 canonical — the inline skeletons in `init.md` are what `init` actually writes.
@@ -90,14 +90,14 @@ canonical — the inline skeletons in `init.md` are what `init` actually writes.
 
 One hook, SessionStart, shipped in `hooks/` and wired in `hooks/hooks.json`. It reads and
 prints; it writes no doc, and its only state is offered.json, so the setup offer fires once
-(D-029(a)).
+(D-029(5)).
 
 It finds the **home** by walking up from the working directory to the nearest
-`.repo-clean` marker (D-023). It prints one `Open:` line per open work item (or "nothing
-open in docs/WORK.md"), then the log's last entry — heading, age in days, and body, read by
-the checker's own parsers, so the two never disagree — then `repo-clean <version>` (the
-running plugin's version, so a stale install shows), then any checker problem: raise those
-before other work. It never runs git (D-029(a)). Opened above several homes, it prints one
+`.repo-clean` marker (D-023). It runs the checker once with `--summary` and prints what it
+says: one `Open:` line per open work item and per unreadable row (or "nothing open in
+docs/WORK.md"), then the log's last entry — heading, age in days, and body — then
+`repo-clean <version>` (the running plugin's version, so a stale install shows), then any
+checker problem: raise those before other work. A checker timeout keeps what it printed. It never runs git (D-029(5)). Opened above several homes, it prints one
 line naming them; with no home near, it points at `/repo-clean init` once.
 
 It runs through `hooks/run.sh`, which finds a Python 3.8+ (`py -3`, `python`, `python3`); if
@@ -121,11 +121,11 @@ installed plugin cache. Nothing runs it automatically — run it by hand after c
 
 Exit 0 clean, 1 findings, 2 nothing could be checked. No copy is vendored into a target repo
 (D-015), and there is no per-project add-on: the checker never runs project code (D-022). Its
-rules are listed in its own docstring (D-029(7)).
+rules are listed in its own docstring (D-029(4)).
 
 ## Never
 
 - Move or delete a file without explicit confirmation from the user.
 - Write anything outside the target repo — the hook's offered.json is the one exception
-  (D-029(a)).
+  (D-029(5)).
 - Overwrite a tracked repo file without the user's confirmation.

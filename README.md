@@ -64,9 +64,9 @@ well-formed — it does not mean they are right. Specifically, it cannot tell:
   restated code constants both pass;
 - whether a doc's claims are still true, beyond what a stale `Date:` hints at;
 - whether a script or data path named in a doc still exists: `paths-exist` checks only
-  `.md` paths (D-029(5)), so a decision naming a deleted `.py` or `.R` file passes;
+  `.md` paths (D-027(5)), so a decision naming a deleted `.py` or `.R` file passes;
 - whether an archive banner cites a real path or a research doc carries `Status:`/`Date:` —
-  both conventions stay, but nothing enforces them (D-029(7)).
+  both conventions stay, but nothing enforces them (D-029(4)).
 
 Those need reading, which is what `maintain --check` step 6 is for. Treat a
 green run as "nothing is malformed", not "the docs are correct" — a checker
@@ -77,7 +77,7 @@ that looks more authoritative than it is does more harm than no checker.
 Only the doc files themselves and an empty `.repo-clean` marker. The checker exists once, in
 the plugin (D-015) — no copy is vendored into your repo — and the hook runs the one shipped
 with the same plugin version as themselves. Nothing is installed into git: no commit hook,
-no `core.hooksPath`, no `.gitignore` (D-029(1)). A project set up by an older release may still
+no `core.hooksPath`, no `.gitignore` (D-027(1)). A project set up by an older release may still
 have `scripts/hooks/pre-commit`; it is no longer used, and you can delete it and run
 `git config --unset core.hooksPath`.
 

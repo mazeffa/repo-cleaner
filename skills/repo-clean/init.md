@@ -5,7 +5,7 @@ necessarily the repo root.
 
 Never commit, stash, stage, or change git settings (including `.gitignore` and
 `core.hooksPath`) at any step. If something looks like it needs one of those, say so and
-let the user do it (D-029(1)).
+let the user do it (D-027(1)).
 
 ## 1. Refuse nesting, and check granularity
 
@@ -101,14 +101,9 @@ document.
 
 ## Rules
 
-- Rewrite docs to remove obsolete text; never append a correction above or below text that
-  still reads as current.
-- Don't create new markdown files; new information goes to the file that owns its question,
-  or to the log if none does.
-- A rule's text, a measured number, or a defect description lives in exactly one file. Every
-  other doc points to it — never repeats it.
-- If two docs assert the same fact differently, surface the contradiction — don't reconcile
-  it silently.
+- Each fact goes once, to the file that owns it; don't create new markdown files, and point
+  to a fact instead of repeating it. The other doc principles (rewrite in place, surface
+  contradictions) are in the repo-clean skill's `SKILL.md`, Principles.
 - When a bug turns up, a step is put off, or an item is finished, update `docs/WORK.md` then:
   add the row, or set its Status and Closed date. Never delete a row.
 - The repo-clean checker must exit 0; it runs at session start and at the end of
@@ -128,13 +123,16 @@ This file is authoritative for **what we believe and why**.
 
 - **Status: `active` | `superseded` | `rejected`** — one field.
   - `active`: in force; follow it.
-  - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the replacement.
+  - `superseded`: was in force and has been replaced; needs `Superseded-by:`, read the
+    replacement. Clauses the replacement lists as carried over stay in force as written here.
   - `rejected`: considered, never in force; carries no `Supersedes:` or `Superseded-by:` link.
     Don't propose it again without new evidence.
 
 There is no `open` or `pending`: something undecided or wanted is a row in `docs/WORK.md`.
 
-Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`.
+Supersession is symmetric: if A names B in `Superseded-by`, B names A in `Supersedes`. A
+superseding entry states only what it changes and names the clauses of the old entry that carry
+over; it never copies them.
 
 ## D-001 — Adopt the repo-clean doc system
 Status: active   Date: <today>

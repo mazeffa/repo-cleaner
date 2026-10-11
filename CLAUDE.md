@@ -25,14 +25,9 @@ what the code currently does — say which one you mean.
 
 ## Rules
 
-- Rewrite docs to remove obsolete text; never append a correction above or below text that
-  still reads as current.
-- Don't create new markdown files; new information goes to the file that owns its question,
-  or to the log if none does.
-- A rule's text, a measured number, or a defect description lives in exactly one file. Every
-  other doc points to it — never repeats it.
-- If two docs assert the same fact differently, surface the contradiction — don't reconcile
-  it silently.
+- Each fact goes once, to the file that owns it; don't create new markdown files, and point
+  to a fact instead of repeating it. The other doc principles (rewrite in place, surface
+  contradictions) are in `skills/repo-clean/SKILL.md`, Principles.
 - When a bug turns up, a step is put off, or an item is finished, update `docs/WORK.md` then:
   add the row, or set its Status and Closed date. Never delete a row.
 - `python skills/repo-clean/scripts/check_docs.py` must exit 0 (D-015); SessionStart runs it

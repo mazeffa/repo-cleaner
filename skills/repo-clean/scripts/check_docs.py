@@ -6,48 +6,51 @@ Exit 0 on success, printing one line stating that shape was verified and content
 was not. Exit 1 on doc findings, exit 2 when there is nothing to check (no `.repo-clean` home
 at or above the cwd, or a bad --root) or on any unhandled exception. Prints one line per
 finding either way. With no --root, the home is the nearest `.repo-clean` marker at or above
-the current folder.
+the current folder. --summary (the SessionStart hook's one call, D-029(5)) first prints the
+open work items, the last log entry and the plugin version, and stays quiet when clean.
 
-Rules (stable string ids, used in inline suppression comments; D-029(7)):
+Rules (stable string ids, used in inline suppression comments; D-029(4)):
   decisions-integrity   Unique IDs in the decision register, closed-vocabulary Status
-                         read from the entry body only, symmetric supersession
+                         (active/superseded/rejected) read from the entry body only, symmetric
+                         supersession
                          (every id in Supersedes:/Superseded-by: is checked, not just
                          the first).
   log-fields-resolve    The newest log entry's 'Decisions:'/'Docs:' fields resolve to real
                          ids/real .md paths; a field's value may wrap onto following lines.
                          Older entries are history: the files they name may have moved.
-                         Only .md targets are checked (D-029(5)) - a missing dated output
+                         Only .md targets are checked (D-027(5)) - a missing dated output
                          file or a renamed script is routine, not a broken doc link.
   outside-repo-paths    No out-of-repo path in a living doc. The default catches paths under
                          a home folder: C:\Users\, ~, /home, /Users, /root, and Git Bash
-                         /<letter>/Users or /<letter>/home (D-029(4)).
+                         /<letter>/Users or /<letter>/home (D-027(4)).
   paths-exist           Backtick-quoted .md paths in living docs must exist, checked
                          case-exactly regardless of OS; a trailing '/' requires a directory.
                          Non-.md targets (scripts, data, generated output) are not checked
-                         (D-029(5)).
+                         (D-027(5)).
   log-grammar           At least one dated entry; log heading grammar; every entry carries
                          Decisions: and Docs:. State:/Next: lines are history, not checked
-                         (D-029(6)).
-  work-table            docs/WORK.md exists and every row has an ID, a Type (bug/task/idea)
-                         and a Status (open/done/dropped).
-  routing-coverage      Every living doc is referenced in the routing file's table
-                         (table rows only, a leading './' normalized).
+                         (D-029(3)).
+  work-table            docs/WORK.md exists and has the header row; every row under it has
+                         six cells, a unique ID, a Type (bug/task/idea), a Status
+                         (open/done/dropped), and a Closed date exactly when it is not open.
+  routing-coverage      Every docs/ file outside EXEMPT_DIRS is referenced in the routing
+                         file's table (table rows only, a leading './' normalized).
 
 Fenced code blocks (```...```) are blanked before any rule reads a document, so an example
 heading or field name inside a fence is never mistaken for real content.
 
-Suppression:
-  1. EXEMPT_DIRS                - whole directories, always exempt.
-  2. ROUTING_EXEMPT_TOPDIRS     - docs/<topdir> exempt from routing-coverage only.
-  3. PATH_SUPPRESSED_PREFIXES   - generated output, never a doc link (D-029(5)).
-  4. <!-- check-docs: ignore <rule-id> --> - on a line, for outside-repo-paths and
+Suppression, two ways only (D-029(7)):
+  1. EXEMPT_DIRS - whole directories (archive, log), never living docs.
+  2. <!-- check-docs: ignore <rule-id> --> - on a line, for outside-repo-paths and
      paths-exist; anywhere in a docs/ file, exempts that file from routing-coverage.
      The other rules have no in-text escape.
 """
 import argparse
+import json
 import os
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 LIVING_ROOTS = ("CLAUDE.md", "README.md")
@@ -57,18 +60,18 @@ DECISIONS_FILE = "docs/DECISIONS.md"
 WORK_FILE = "docs/WORK.md"
 WORK_TYPES = ("bug", "task", "idea")
 WORK_STATUSES = ("open", "done", "dropped")
+WORK_HEADER = ["ID", "Item", "Type", "Status", "Added", "Closed"]
 ID_PREFIX = "D-"
 STATUS_VOCAB = ("active", "superseded", "rejected")
 LOG_DIR = "docs/log"
 ROUTING_FILE = "CLAUDE.md"
-ROUTING_EXEMPT_TOPDIRS = ("archive", "log", "research")
 OUTSIDE_PATH_RE = (
-    r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-029(4)); other drives are shared
+    r"(?<![\w\\])[A-Za-z]:\\[Uu]sers\\"   # a Windows home folder (D-027(4)); other drives are shared
     r"|~[\\/]"                           # ~/ or ~\
     r"|(?:^|[\s`(\[])/(?:home|Users|root)/"          # unix absolute home dirs
     r"|(?:^|[\s`(\[])/[A-Za-z]/(?:Users|home)/"      # Git Bash /c/Users, /c/home
 )
-PATH_SUPPRESSED_PREFIXES = ("output/",)  # analytics homes: generated output is not a doc link
+PLUGIN_JSON = Path(__file__).resolve().parents[3] / ".claude-plugin" / "plugin.json"
 
 
 def scan_doc(p):
@@ -264,7 +267,7 @@ def candidate_path(ctx, token, known_roots):
     if s.startswith(("http://", "https://")):
         return None
     s = re.sub(r":\d+(-\d+)?$", "", s.rstrip(":,.\"'()"))
-    if not s or s.startswith(PATH_SUPPRESSED_PREFIXES):
+    if not s:
         return None
     if not CANDIDATE_TOKEN_RE.match(s):
         return None
@@ -275,7 +278,7 @@ def candidate_path(ctx, token, known_roots):
 
 def docs_field_paths(ctx, value, known_roots):
     """Tokens out of a `Docs:` field value that look confidently like paths to
-    documentation. Only a token ending in '.md' counts (D-029(5)): a version number,
+    documentation. Only a token ending in '.md' counts (D-027(5)): a version number,
     section number, script, data file, or generated output is skipped, since a missing
     dated output file or a renamed script is routine, not a broken doc link. 'none',
     URLs, and Windows drive paths are always skipped."""
@@ -303,7 +306,6 @@ def docs_field_paths(ctx, value, known_roots):
 # Generic rules
 # ---------------------------------------------------------------------------
 
-VERDICT_RE = re.compile(r"(?:^|\s)Verdict:", re.M)  # raw text: also catches 'Status: x Verdict: y'
 DECISION_HEADING_RE = re.compile(rf"^## ({re.escape(ID_PREFIX)}\d+)\b.*$")
 
 
@@ -327,20 +329,15 @@ def check_decisions_integrity(ctx, errors, docs):
         if m:
             errors.append(f"{DECISIONS_FILE}:{n}: {m.group(1)}: decision heading must be '## {ID_PREFIX}NNN'")
     ids = set()
-    verdict_ids = []
     superseded_by, supersedes = {}, {}
     for eid, _, body, fields in decision_entries(text):
         if eid in ids:
             errors.append(f"{DECISIONS_FILE}: duplicate id {eid}")
         ids.add(eid)
         status = fields.get("Status")
-        if VERDICT_RE.search("\n".join(body)):
-            verdict_ids.append(eid)
-        if status == "open":
-            errors.append(f"{DECISIONS_FILE}: {eid} Status: open is retired (D-029) - "
-                          f"make it a {WORK_FILE} item, or decide it")
-        elif status not in STATUS_VOCAB:
-            errors.append(f"{DECISIONS_FILE}: {eid} bad/missing Status: {(status or '')!r}")
+        if status not in STATUS_VOCAB:
+            errors.append(f"{DECISIONS_FILE}: {eid} bad/missing Status: {(status or '')!r} "
+                          f"(one of {', '.join(STATUS_VOCAB)})")
         sb_val = fields.get("Superseded-by", "")
         sp_val = fields.get("Supersedes", "")
         if status == "superseded" and not id_re.search(sb_val):
@@ -349,11 +346,6 @@ def check_decisions_integrity(ctx, errors, docs):
             superseded_by[eid] = id_re.findall(sb_val)
         if sp_val:
             supersedes[eid] = id_re.findall(sp_val)
-    if verdict_ids:
-        errors.append(
-            f"{DECISIONS_FILE}: {len(verdict_ids)} entries still carry Verdict: (retired, D-029): "
-            f"{', '.join(verdict_ids)} - adopted: delete it; rejected and never in force: "
-            f"Status: rejected; unresolved: a {WORK_FILE} item")
     reported_pairs = set()
     for eid, targets in superseded_by.items():
         for target in targets:
@@ -383,7 +375,7 @@ def check_log_fields_resolve(ctx, errors, docs):
     prefix = re.escape(ID_PREFIX)
     id_re = re.compile(prefix + r"\d+")
     known_roots = top_level_names(ctx)
-    for name, heading, body in log_entries(ctx)[-1:]:  # older entries are history (D-029(7))
+    for name, heading, body in log_entries(ctx)[-1:]:  # older entries are history (D-029(4))
         fields = parse_fields(body)
         if ctx.decision_ids is not None and "Decisions" in fields:
             for d in id_re.findall(fields["Decisions"]):
@@ -406,7 +398,7 @@ def check_outside_repo_paths(ctx, errors, docs):
 
 
 def is_doc_target(s):
-    """True for a path this rule should still validate (D-029(5)): a markdown file, or
+    """True for a path this rule should still validate (D-027(5)): a markdown file, or
     a markdown file's own directory-shaped mistake ('foo.md/'). False for a script, data
     file, generated output, or plain directory reference - those are not documentation
     links, and a missing one is routine."""
@@ -445,26 +437,44 @@ def log_entries(ctx):
     return out
 
 
-def work_rows(text):
-    """(line number, stripped cells) for each data row of the work table; the header row
-    (first cell 'ID') and the separator row are skipped."""
+def cells_of(line):
+    s = line.strip()
+    return [c.strip() for c in s.split("|")[1:-1]] if s.startswith("|") else None
+
+
+def work_table(text):
+    """(rows, problems) of the work table: rows are (line number, cells) for the contiguous
+    `|` lines under the exact WORK_HEADER row and its separator; nothing else in the file is
+    read. problems say what makes the table unreadable. The one parser for the checker and
+    the hook, so they never disagree."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if cells_of(line) == WORK_HEADER), None)
+    if start is None:
+        return [], [f"no table header row '| {' | '.join(WORK_HEADER)} |'"]
+    sep = cells_of(lines[start + 1]) if start + 1 < len(lines) else None
+    if not sep or not all(re.fullmatch(r":?-+:?", c) for c in sep):
+        return [], [f"line {start + 2}: the header row must be followed by a separator row"]
     rows = []
-    for n, line in enumerate(text.splitlines(), 1):
-        s = line.strip()
-        if s.startswith("|"):
-            cells = [c.strip() for c in s.split("|")[1:-1]]
-            if cells and cells[0] != "ID" and not all(re.fullmatch(r":?-+:?", c) for c in cells):
-                rows.append((n, cells))
-    return rows
+    for n, line in enumerate(lines[start + 2:], start + 3):
+        cells = cells_of(line)
+        if cells is None:
+            break
+        rows.append((n, cells))
+    return rows, []
 
 
 def open_items(root):
-    """What is to do (D-029(a)): each open row of the work list, as 'ID - item'. A missing
-    file yields nothing; the work-table rule reports it."""
+    """What is to do (D-029(5)): 'ID - item' for each open row, then one line per thing the
+    parser cannot read, so a broken row is never silently left out. A missing file yields
+    nothing; the work-table rule reports it."""
     p = root / WORK_FILE
     if not p.exists():
         return []
-    return [f"{c[0]} — {c[1]}" for _, c in work_rows(read_doc(p)) if len(c) > 3 and c[3] == "open"]
+    rows, problems = work_table(read_doc(p))
+    out = [f"{c[0]} — {c[1]}" for _, c in rows if len(c) == 6 and c[3] == "open"]
+    out += [f"{WORK_FILE}: {msg}" for msg in problems]
+    out += [f"{WORK_FILE}:{n}: unreadable row (a '|' inside a cell?)" for n, c in rows if len(c) != 6]
+    return out
 
 
 def check_log_grammar(ctx, errors, docs):
@@ -514,12 +524,26 @@ def check_log_grammar(ctx, errors, docs):
 def check_work_table(ctx, errors, docs):
     p = ctx.root / WORK_FILE
     if not p.exists():
-        errors.append(f"{WORK_FILE}: file does not exist")
+        errors.append(f"{WORK_FILE}: file does not exist - run /repo-clean maintain to set it up")
         return
-    for n, c in work_rows(read_doc(p)):
-        if len(c) != 6 or not c[0] or c[2] not in WORK_TYPES or c[3] not in WORK_STATUSES:
-            errors.append(f"{WORK_FILE}:{n}: bad row - needs ID | Item | Type ({'/'.join(WORK_TYPES)}) "
-                          f"| Status ({'/'.join(WORK_STATUSES)}) | Added | Closed")
+    rows, problems = work_table(read_doc(p))
+    errors += [f"{WORK_FILE}: {msg}" for msg in problems]
+    seen = set()
+    for n, c in rows:
+        if len(c) != 6:
+            errors.append(f"{WORK_FILE}:{n}: {len(c)} cells, needs 6 ({' | '.join(WORK_HEADER)}); "
+                          "a '|' inside a cell splits it")
+            continue
+        wid, _, wtype, status, _, closed = c
+        if not wid or wid in seen:
+            errors.append(f"{WORK_FILE}:{n}: missing or duplicate ID {wid!r}")
+        seen.add(wid)
+        if wtype not in WORK_TYPES:
+            errors.append(f"{WORK_FILE}:{n}: Type {wtype!r} is not one of {', '.join(WORK_TYPES)}")
+        if status not in WORK_STATUSES:
+            errors.append(f"{WORK_FILE}:{n}: Status {status!r} is not one of {', '.join(WORK_STATUSES)}")
+        elif (status == "open") == bool(closed):
+            errors.append(f"{WORK_FILE}:{n}: Closed must be filled exactly when Status is done or dropped")
 
 
 def check_routing_coverage(ctx, errors, docs):
@@ -530,8 +554,7 @@ def check_routing_coverage(ctx, errors, docs):
     routed = set(routing_table_paths(ctx))
     for ext in ("*.md", "*.html"):
         for p in sorted(ctx.docs.rglob(ext)):
-            rel = p.relative_to(ctx.docs)
-            if rel.parts and rel.parts[0] in ROUTING_EXEMPT_TOPDIRS:
+            if ctx.is_exempt(p):
                 continue
             text = read_doc(p)
             if any(m.group(1) == "routing-coverage" for m in SUPPRESS_RE.finditer(text)):
@@ -596,7 +619,33 @@ def _build_arg_parser():
     parser = argparse.ArgumentParser(prog="check_docs.py", description="Docs hygiene checker.")
     parser.add_argument("--root", metavar="DIR",
                         help="home to check (default: the nearest .repo-clean at or above the cwd)")
+    parser.add_argument("--summary", action="store_true",
+                        help="first print open work, the last log entry and the version; quiet when clean")
     return parser
+
+
+def print_summary(ctx):
+    """What SessionStart shows before any finding (D-029(5)), flushed so it survives a timeout
+    in the rules that follow."""
+    items = open_items(ctx.root)
+    print("\n".join(f"Open: {i}" for i in items) if items else f"nothing open in {WORK_FILE}")
+    entries = log_entries(ctx)
+    if entries:
+        heading = entries[-1][1]
+        print(heading)
+        m = re.search(r"\d{4}-\d{2}-\d{2}", heading)
+        try:
+            if m:
+                days = (date.today() - date.fromisoformat(m.group())).days
+                print(f"Last entry: {m.group()} ({days} days ago)")
+        except ValueError:  # an impossible date: print no age, keep the body
+            pass
+        print("\n".join(entries[-1][2]).strip())
+    try:
+        print(f"repo-clean {json.loads(PLUGIN_JSON.read_text(encoding='utf-8'))['version']}")
+    except Exception as exc:
+        print(f"repo-clean: version unknown ({exc!r})")
+    sys.stdout.flush()
 
 
 def main(argv):
@@ -619,13 +668,19 @@ def _main(argv):
 
     errors = []
     ctx = Ctx(root)
+    if args.summary:
+        print_summary(ctx)
     run_generic_rules(ctx, errors)
 
+    if errors and args.summary:
+        print("repo-clean: the checker found problems in this home - raise them before other work:")
     for e in errors:
         print(e)
     if errors:
         print(f"\n{len(errors)} issue(s).")
         return 1
+    if args.summary:
+        return 0
     # Say what a clean run does NOT mean, at the moment someone sees it. The README says
     # the same thing, but nobody re-reads a README while looking at a green result.
     n = len(living_docs(ctx))

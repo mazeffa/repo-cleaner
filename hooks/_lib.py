@@ -9,9 +9,6 @@ from pathlib import Path
 
 BASE_DIR = Path(os.environ.get("REPO_CLEAN_HOME") or (Path.home() / ".claude" / "repo-clean"))
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-# Every hook imports this module, so every hook can `import check_docs` (D-022: the plugin's
-# own checker, never a copy found in a project). Outside any try, so a bad path is loud.
-sys.path.insert(0, str(PLUGIN_ROOT / "skills" / "repo-clean" / "scripts"))
 
 
 def normalize_cwd(cwd):
@@ -70,18 +67,21 @@ def checker_path():
 
 
 def run_checker(root, timeout=25):
-    """Always (returncode, text): 0 clean, 1 doc findings, 2 the checker itself failed or is
-    missing, 124 it timed out. Only 1 is a finding about the docs. The hook limit is 30 s."""
+    """Run `check_docs.py --summary` once. Always (returncode, text): 0 clean, 1 doc findings,
+    2 the checker itself failed or is missing, 124 it timed out (text is what it printed
+    before that - the summary comes first). Only 1 is a finding about the docs. The hook
+    limit is 30 s."""
     p = checker_path()
     if not p.exists():
         return 2, f"checker not found: {p}"
     try:
         out = subprocess.run(
-            [sys.executable, str(p), "--root", str(root)],
+            [sys.executable, str(p), "--root", str(root), "--summary"],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
         )
-    except subprocess.TimeoutExpired:
-        return 124, "checker timed out"
+    except subprocess.TimeoutExpired as exc:
+        partial = exc.stdout or ""
+        return 124, partial.decode("utf-8", "replace") if isinstance(partial, bytes) else partial
     # A real finding always prints to stdout; exit 1 with none is a traceback, i.e. a crash.
     code = out.returncode if out.returncode == 0 or (out.returncode == 1 and out.stdout.strip()) else 2
     return code, out.stdout or out.stderr

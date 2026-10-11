@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
-"""SessionStart hook: print the open items in docs/WORK.md, then the home's last log entry
-(heading, age, body - read by the checker's own parsers), the plugin version, and any checker
-problems. No git (D-029(a)). Opened above several homes, print one line naming
-them. Never blocks (SessionStart can't block anyway)."""
-import json
-import re
+"""SessionStart hook: run the checker once with --summary and print what it says - the open
+items in docs/WORK.md, the last log entry, the plugin version, then any finding (D-029(5)).
+No git. Opened above several homes, print one line naming them. Never blocks (SessionStart
+can't block anyway)."""
 import sys
-from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _lib import (
-    PLUGIN_ROOT, find_home, find_homes_nearby, read_stdin_json, run_checker,
-    setup_already_offered,
-)
+from _lib import find_home, find_homes_nearby, read_stdin_json, run_checker, setup_already_offered
 
 
 def names(homes):
@@ -34,41 +28,12 @@ def main():
             print("repo-clean is not set up here. Ask the user, then run /repo-clean init.")
         return 0
 
-    try:
-        import check_docs
-        items = check_docs.open_items(home)
-        for item in items:
-            print(f"Open: {item}")
-        if not items:
-            print("nothing open in docs/WORK.md")
-        entries = check_docs.log_entries(check_docs.Ctx(home))
-        if entries:
-            heading = entries[-1][1]
-            print(heading)
-            m = re.search(r"\d{4}-\d{2}-\d{2}", heading)
-            try:
-                if m:
-                    days = (date.today() - date.fromisoformat(m.group())).days
-                    print(f"Last entry: {m.group()} ({days} days ago)")
-            except ValueError:  # an impossible date: print no age, keep the body
-                pass
-            print("\n".join(entries[-1][2]).strip())
-    except Exception as exc:
-        print(f"repo-clean: checker import failed: {exc!r}")
-    try:
-        version = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json")
-                             .read_text(encoding="utf-8"))["version"]
-        print(f"repo-clean {version}")
-    except Exception as exc:
-        print(f"repo-clean: version unknown ({exc!r})")
-
-    sys.stdout.flush()  # the checker is the slow part; what's above survives a timeout
     code, text = run_checker(home)
-    if code == 1:
-        print(f"repo-clean: the checker found problems in this home - raise them before "
-              f"other work:\n{text.strip()}")
-    elif code != 0:
-        print(f"repo-clean: the checker itself failed ({text.strip()}) - docs not checked")
+    print(text.strip())
+    if code == 124:
+        print("repo-clean: the checker timed out - docs not fully checked")
+    elif code not in (0, 1):
+        print("repo-clean: the checker itself failed - docs not checked")
     return 0
 
 
